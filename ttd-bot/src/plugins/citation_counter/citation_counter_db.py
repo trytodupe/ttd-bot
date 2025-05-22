@@ -121,7 +121,8 @@ async def get_data_by_date(conn, group_id, date):
     column_names = [description[0] for description in cursor.description]
     if row and any("_" in column_name for column_name in column_names):
         column_names = [description[0] for description in cursor.description]
-        data_dict = {int(column_name.split('_')[1]): row[i] for i, column_name in enumerate(column_names) if "_" in column_name}
+        data_dict = {int(column_name.split('_')[1]): row[i]
+                     for i, column_name in enumerate(column_names) if "_" in column_name and row[i] > 0}
         return dict(sorted(data_dict.items(), key=lambda item: item[1], reverse=True))
     else:
         print(f"No data found for group {group_id} on date {date}.")
