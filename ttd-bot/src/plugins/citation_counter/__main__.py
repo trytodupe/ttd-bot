@@ -13,6 +13,8 @@ from .citation_counter_db import *
 from .__init__ import config
 
 
+citation_db = config.citation_counter_db_path
+
 command_rule = is_type(GroupMessageEvent) & to_me()
 cite_cmd_group = CommandGroup("cite", rule=command_rule, priority=10, block=True)
 
@@ -24,7 +26,8 @@ total_cmd = cite_cmd_group.command("total")
 async def handle_command(event: GroupMessageEvent, date: datetime.date, prompt: str, finish_cmd):
     group_id = event.group_id
     try:
-        with sqlite3.connect(citation_db) as conn:
+        citation_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(citation_db.resolve()) as conn:
             await init_db(conn)
             if date is None:
                 d = await get_all_data(conn, group_id)
@@ -123,7 +126,8 @@ async def _(event: GroupMessageEvent):
         return
 
     try:
-        with sqlite3.connect(citation_db) as conn:
+        citation_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(citation_db.resolve()) as conn:
             await init_db(conn)
             await add_date(conn, group_id, datetime.date.today())
             await add_user(conn, group_id, replied_user_id)

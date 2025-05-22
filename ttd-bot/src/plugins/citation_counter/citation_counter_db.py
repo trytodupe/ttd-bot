@@ -1,7 +1,6 @@
 import sqlite3
 import inspect
 
-citation_db = r'E:\liuan\Documents\qqBot2\ttd-bot\db\citation_count.db'
 
 create_index_table = '''CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY, 
