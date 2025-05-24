@@ -7,7 +7,7 @@ from .config import Config
 __plugin_meta__ = PluginMetadata(
     name="citation-counter",
     description="",
-    usage="ttd cite [today|total]",
+    usage="ttd cite [today|yesterday|total]",
     config=Config,
 )
 
