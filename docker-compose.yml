@@ -1,7 +1,7 @@
 services:
   nonebot:
     build: .
-    image: trytodupe/ttd-bot:latest
+    image: trytodupe/ttd-bot:v1.0.0
     ports:
       - "8901:8901"
     env_file:
