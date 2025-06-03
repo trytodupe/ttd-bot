@@ -9,6 +9,6 @@ requires-python = ">=3.9, <4.0"
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
 ]
-plugins = ["nonebot_plugin_orm", "nonebot_plugin_localstore", "nonebot_plugin_uninfo", "nonebot_plugin_status", "nonebot_plugin_chatrecorder", "nonebot_plugin_wordcloud", "nonebot_plugin_datastore", "nonebot_plugin_add_friends", "nonebot-plugin-auto-sendlike"]
+plugins = ["nonebot_plugin_orm", "nonebot_plugin_localstore", "nonebot_plugin_uninfo", "nonebot_plugin_status", "nonebot_plugin_chatrecorder", "nonebot_plugin_wordcloud", "nonebot_plugin_datastore", "nonebot_plugin_add_friends", "nonebot-plugin-auto-sendlike", "nonebot_plugin_authrespond"]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
