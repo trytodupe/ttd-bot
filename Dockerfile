@@ -8,7 +8,6 @@ ENV TZ=Asia/Shanghai
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_FROZEN=1
 ENV UV_LINK_MODE=copy
-ENV ALL_PROXY=http://172.28.96.1:7890
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -25,7 +24,7 @@ RUN chmod +x /start.sh
 ENV APP_MODULE=main:app
 ENV MAX_WORKERS=1
 
-COPY bot.py ./docker/main.py ./docker/prestart.sh /app/
+COPY bot.py ./docker/main.py .env ./docker/prestart.sh /app/
 COPY src /app/src/
 RUN chmod +x /app/prestart.sh
 
