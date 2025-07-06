@@ -1,4 +1,4 @@
-FROM python:3.10 as requirements_stage
+FROM python:3.10 AS requirements_stage
 
 COPY ./docker/pip.conf /root/.config/pip/pip.conf
 
@@ -17,14 +17,14 @@ COPY ./docker/pip.conf /root/.config/pip/pip.conf
 
 WORKDIR /app
 
-ENV TZ Asia/Shanghai
+ENV TZ=Asia/Shanghai
 ENV PYTHONPATH=/app
 
 COPY ./docker/gunicorn_conf.py ./docker/start.sh /
 RUN chmod +x /start.sh
 
-ENV APP_MODULE main:app
-ENV MAX_WORKERS 1
+ENV APP_MODULE=main:app
+ENV MAX_WORKERS=1
 
 COPY ./docker/main.py /app
 COPY --from=requirements_stage /wheel /wheel
