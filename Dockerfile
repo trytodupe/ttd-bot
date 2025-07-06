@@ -1,39 +1,31 @@
-FROM python:3.10 AS requirements_stage
-
-COPY ./docker/pip.conf /root/.config/pip/pip.conf
-
-WORKDIR /wheel
-
-COPY ./pyproject.toml \
-  ./requirements.txt \
-  /wheel/
-
-RUN python -m pip wheel --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
-
-
-FROM python:3.10-slim
-
-COPY ./docker/pip.conf /root/.config/pip/pip.conf
+FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:0.7.19 /uv /bin/uv
 
 WORKDIR /app
 
 ENV TZ=Asia/Shanghai
-ENV PYTHONPATH=/app
 
-COPY ./docker/gunicorn_conf.py ./docker/start.sh /
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_FROZEN=1
+ENV UV_LINK_MODE=copy
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && apt-get install -y git
+
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+  uv sync --no-dev
+
+COPY ./docker/gunicorn_conf.py /gunicorn_conf.py
+COPY ./docker/start.sh /start.sh
 RUN chmod +x /start.sh
 
 ENV APP_MODULE=main:app
 ENV MAX_WORKERS=1
 
-COPY ./docker/main.py /app
-COPY --from=requirements_stage /wheel /wheel
-
-RUN pip install --no-cache-dir gunicorn uvicorn[standard] nonebot2 \
-  && pip install --no-cache-dir --no-index --force-reinstall --find-links=/wheel -r /wheel/requirements.txt && rm -rf /wheel
-COPY . /app/
-
-COPY ./docker/prestart.sh /app/
+COPY bot.py ./docker/main.py .env ./docker/prestart.sh /app/
+COPY src /app/src/
 RUN chmod +x /app/prestart.sh
 
-CMD ["/start.sh"]
+CMD ["uv", "run", "--no-dev", "/start.sh"]
