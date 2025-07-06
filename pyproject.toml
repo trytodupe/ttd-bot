@@ -1,6 +1,6 @@
 [project]
 name = "ttd-bot"
-version = "1.1.0"
+version = "1.1.1"
 description = "ttd-bot"
 readme = "README.md"
 requires-python = ">=3.11, <4.0"
@@ -22,7 +22,7 @@ dependencies = [
     "nonebot-plugin-auto-sendlike>=0.0.12",
     "nonebot-plugin-authrespond>=1.8",
     "nonebot-plugin-deer-pipe>=0.4.2",
-    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@42355f45de3a1fae46e47668e5122bb26e0acd1c",
+    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@f241347db35b718c474ff69d41c24a5d276b647c",
 ]
 
 [tool.nonebot]
