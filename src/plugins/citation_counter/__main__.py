@@ -101,7 +101,7 @@ async def get_user_id_from_message_id(message_id: str) -> str:
         user_id = user_ids[-1] if user_ids else None
     return user_id
 
-reply = on_message(rule=is_reply)
+reply = on_message(rule=is_reply, block=False)
 
 @reply.handle()
 async def _(event: GroupMessageEvent):
