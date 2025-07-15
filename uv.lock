@@ -1515,7 +1515,7 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-learning-chat"
 version = "0.4.1"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=f241347db35b718c474ff69d41c24a5d276b647c#f241347db35b718c474ff69d41c24a5d276b647c" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=141fb4ed34651b73b0c7e30cd659becb218a22d1#141fb4ed34651b73b0c7e30cd659becb218a22d1" }
 dependencies = [
     { name = "jieba" },
     { name = "nonebot-adapter-onebot" },
@@ -2515,7 +2515,7 @@ asyncpg = [
 
 [[package]]
 name = "ttd-bot"
-version = "1.1.3"
+version = "1.1.4"
 source = { virtual = "." }
 dependencies = [
     { name = "gunicorn" },
@@ -2550,7 +2550,7 @@ requires-dist = [
     { name = "nonebot-plugin-chatrecorder", specifier = ">=0.7.0" },
     { name = "nonebot-plugin-datastore", specifier = ">=1.3.0" },
     { name = "nonebot-plugin-deer-pipe", specifier = ">=0.4.2" },
-    { name = "nonebot-plugin-learning-chat", git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=f241347db35b718c474ff69d41c24a5d276b647c" },
+    { name = "nonebot-plugin-learning-chat", git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=141fb4ed34651b73b0c7e30cd659becb218a22d1" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.1" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
