@@ -9,7 +9,6 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8901
-      ALL_PROXY: http://172.28.96.1:7890
       LOG_LEVEL: DEBUG
     volumes:
       - ./data:/app/data

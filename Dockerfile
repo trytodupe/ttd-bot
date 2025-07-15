@@ -4,6 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.19 /uv /bin/uv
 WORKDIR /app
 
 ENV TZ=Asia/Shanghai
+ENV ALL_PROXY=http://172.28.96.1:7890
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_FROZEN=1
