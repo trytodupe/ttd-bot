@@ -1496,7 +1496,7 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-deer-pipe"
 version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=978b6ece2455f72c4c4a4ddc4763c129bd3c241a#978b6ece2455f72c4c4a4ddc4763c129bd3c241a" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "nonebot-plugin-alconna" },
@@ -1507,15 +1507,11 @@ dependencies = [
     { name = "pillow" },
     { name = "sqlmodel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/07/a9483d59f4fb4cbb614fda724a31301e1735ec11763d3ccf3bb0d4df3144/nonebot_plugin_deer_pipe-0.4.2.tar.gz", hash = "sha256:ced32b6d0c806c5d3da3148c68b77825336268468e2af614d79cb31d9703e78d", size = 5587740, upload-time = "2025-02-10T07:41:32.468Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/49/0c2d82e008ddd7f8bb51b20c796e5a440181ec2529f11c51a2fe111a7bdb/nonebot_plugin_deer_pipe-0.4.2-py3-none-any.whl", hash = "sha256:a7afa84f1c13c0c5a9713a6abb68dabe319677abb89dfb6434cb1c70e8a87e14", size = 5462442, upload-time = "2025-02-10T07:41:29.343Z" },
-]
 
 [[package]]
 name = "nonebot-plugin-learning-chat"
 version = "0.4.1"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=141fb4ed34651b73b0c7e30cd659becb218a22d1#141fb4ed34651b73b0c7e30cd659becb218a22d1" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=3c9d201e35778f3890db40183f4540d01cfd0542#3c9d201e35778f3890db40183f4540d01cfd0542" }
 dependencies = [
     { name = "jieba" },
     { name = "nonebot-adapter-onebot" },
@@ -2549,8 +2545,8 @@ requires-dist = [
     { name = "nonebot-plugin-auto-sendlike", specifier = ">=0.0.12" },
     { name = "nonebot-plugin-chatrecorder", specifier = ">=0.7.0" },
     { name = "nonebot-plugin-datastore", specifier = ">=1.3.0" },
-    { name = "nonebot-plugin-deer-pipe", specifier = ">=0.4.2" },
-    { name = "nonebot-plugin-learning-chat", git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=141fb4ed34651b73b0c7e30cd659becb218a22d1" },
+    { name = "nonebot-plugin-deer-pipe", git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=978b6ece2455f72c4c4a4ddc4763c129bd3c241a" },
+    { name = "nonebot-plugin-learning-chat", git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=3c9d201e35778f3890db40183f4540d01cfd0542" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.1" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
