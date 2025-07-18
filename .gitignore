@@ -144,3 +144,5 @@ data/
 data_dev/
 db/
 db_dev/
+
+.devdbrc
