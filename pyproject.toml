@@ -23,6 +23,8 @@ dependencies = [
     "nonebot-plugin-authrespond>=1.8",
     "nonebot-plugin-deer-pipe @ git+https://github.com/trytodupe/nonebot-plugin-deer-pipe@978b6ece2455f72c4c4a4ddc4763c129bd3c241a",
     "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@45c39f2af8b79d2113a1fdc96e0a51de65427f56",
+    "nonebot-plugin-auto-enter-group",
+    "nonebot-plugin-analysis-bilibili>=2.8.1",
 ]
 
 [tool.nonebot]
@@ -42,6 +44,8 @@ plugins = [
     "nonebot_plugin_authrespond",
     "nonebot_plugin_deer_pipe",
     "nonebot_plugin_learning_chat",
+    "nonebot_plugin_auto_enter_group",
+    "nonebot_plugin_analysis_bilibili",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
