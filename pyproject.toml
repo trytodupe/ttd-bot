@@ -1,9 +1,9 @@
 [project]
 name = "ttd-bot"
-version = "1.1.7"
+version = "1.1.10"
 description = "ttd-bot"
 readme = "README.md"
-requires-python = ">=3.11, <4.0"
+requires-python = ">=3.12, <4.0"
 dependencies = [
     "gunicorn>=23.0.0",
     "uvicorn[standard]>=0.35.0",
@@ -25,6 +25,7 @@ dependencies = [
     "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@45c39f2af8b79d2113a1fdc96e0a51de65427f56",
     "nonebot-plugin-auto-enter-group",
     "nonebot-plugin-analysis-bilibili>=2.8.1",
+    "nonebot-plugin-groupmate-waifu",
 ]
 
 [tool.nonebot]
@@ -46,6 +47,7 @@ plugins = [
     "nonebot_plugin_learning_chat",
     "nonebot_plugin_auto_enter_group",
     "nonebot_plugin_analysis_bilibili",
+    "nonebot_plugin_groupmate_waifu",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]

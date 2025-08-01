@@ -1,7 +1,7 @@
 services:
   nonebot:
     build: .
-    image: trytodupe/ttd-bot:v1.1.7
+    image: trytodupe/ttd-bot:v1.1.10
     ports:
       - "8901:8901"
     env_file:
@@ -9,8 +9,10 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8901
-      LOG_LEVEL: DEBUG
+      # LOG_LEVEL: DEBUG
     volumes:
       - ./data:/app/data
       - ./db:/app/db
+      - /usr/share/fonts:/usr/share/fonts
+      # - ./fonts:/usr/share/fonts
     restart: always
