@@ -26,6 +26,7 @@ dependencies = [
     "nonebot-plugin-auto-enter-group",
     "nonebot-plugin-analysis-bilibili>=2.8.1",
     "nonebot-plugin-groupmate-waifu",
+    "nonebot-plugin-mc-server-status>=0.4.1",
 ]
 
 [tool.nonebot]
@@ -48,6 +49,7 @@ plugins = [
     "nonebot_plugin_auto_enter_group",
     "nonebot_plugin_analysis_bilibili",
     "nonebot_plugin_groupmate_waifu",
+    "nonebot_plugin_mc_server_status",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
