@@ -11,14 +11,14 @@ ENV UV_FROZEN=1
 ENV UV_LINK_MODE=copy
 
 RUN if [ -f /etc/apt/sources.list ]; then \
-      sed -i 's|http://deb.debian.org|http://mirrors.ustc.edu.cn|g' /etc/apt/sources.list; \
+      sed -i 's|http://deb.debian.org|http://mirrors.ustc.edu.cn|g; s|http://security.debian.org|http://mirrors.ustc.edu.cn|g' /etc/apt/sources.list; \
     fi && \
     if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-      sed -i 's|http://deb.debian.org|http://mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources; \
+      sed -i 's|http://deb.debian.org|http://mirrors.ustc.edu.cn|g; s|http://security.debian.org|http://mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources; \
     fi
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
-  apt-get update && apt-get install -y git libgl1-mesa-glx libegl1-mesa
+  apt-get update && apt-get install -y git libgl1 libglx-mesa0
 
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
