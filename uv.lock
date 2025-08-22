@@ -500,6 +500,20 @@ wheels = [
 ]
 
 [[package]]
+name = "clovers-setu-collection"
+version = "0.2.3.post1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "clovers" },
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4e/26/80741d2880b7234cd378ae56713b3de4999576ce1bd4d818e19ecf81cbde/clovers_setu_collection-0.2.3.post1.tar.gz", hash = "sha256:c6423f5e52af57c569a02e86a3c603ec41111780efd8174c27afc6a9c7d55e73", size = 5984, upload-time = "2025-06-24T15:55:33.503Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/f3/eb81d9adae8cb2ebce0feaf043a53d36cf508d43bad81d235894c632a64e/clovers_setu_collection-0.2.3.post1-py3-none-any.whl", hash = "sha256:7f9bbb589d12841786dbb2b0bed2a423294360de370795c324e282f7dd9ef218", size = 8794, upload-time = "2025-06-24T15:55:32.071Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2529,6 +2543,7 @@ name = "ttd-bot"
 version = "1.1.12"
 source = { virtual = "." }
 dependencies = [
+    { name = "clovers-setu-collection" },
     { name = "gunicorn" },
     { name = "nb-cli" },
     { name = "nonebot-adapter-onebot" },
@@ -2539,6 +2554,7 @@ dependencies = [
     { name = "nonebot-plugin-auto-enter-group" },
     { name = "nonebot-plugin-auto-sendlike" },
     { name = "nonebot-plugin-chatrecorder" },
+    { name = "nonebot-plugin-clovers" },
     { name = "nonebot-plugin-datastore" },
     { name = "nonebot-plugin-deer-pipe" },
     { name = "nonebot-plugin-groupmate-waifu" },
@@ -2555,6 +2571,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "clovers-setu-collection", specifier = ">=0.2.3.post1" },
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "nb-cli", specifier = ">=1.4.2" },
     { name = "nonebot-adapter-onebot", specifier = ">=2.4.6" },
@@ -2565,6 +2582,7 @@ requires-dist = [
     { name = "nonebot-plugin-auto-enter-group" },
     { name = "nonebot-plugin-auto-sendlike", specifier = ">=0.0.12" },
     { name = "nonebot-plugin-chatrecorder", specifier = ">=0.7.0" },
+    { name = "nonebot-plugin-clovers", specifier = ">=0.3.5" },
     { name = "nonebot-plugin-datastore", specifier = ">=1.3.1" },
     { name = "nonebot-plugin-deer-pipe", git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=978b6ece2455f72c4c4a4ddc4763c129bd3c241a" },
     { name = "nonebot-plugin-groupmate-waifu", specifier = ">=0.27" },

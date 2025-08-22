@@ -1,6 +1,6 @@
 [project]
 name = "ttd-bot"
-version = "1.1.12"
+version = "1.1.13"
 description = "ttd-bot"
 readme = "README.md"
 requires-python = ">=3.12, <4.0"
@@ -25,8 +25,10 @@ dependencies = [
     "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@45c39f2af8b79d2113a1fdc96e0a51de65427f56",
     "nonebot-plugin-auto-enter-group",
     "nonebot-plugin-analysis-bilibili>=2.8.1",
-    "nonebot-plugin-groupmate-waifu>=0.27",
     "nonebot-plugin-mc-server-status>=0.4.1",
+    "nonebot-plugin-clovers>=0.3.5",
+    "nonebot-plugin-groupmate-waifu>=0.27",
+    "clovers-setu-collection>=0.2.3.post1",
 ]
 
 [tool.nonebot]
@@ -39,6 +41,7 @@ plugins = [
     "nonebot_plugin_uninfo",
     "nonebot_plugin_status",
     "nonebot_plugin_chatrecorder",
+    "nonebot_plugin_clovers",
     "nonebot_plugin_wordcloud",
     "nonebot_plugin_datastore",
     "nonebot_plugin_add_friends",

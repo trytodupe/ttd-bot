@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update && apt-get install -y git libgl1 libglx-mesa0
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock clovers.toml ./
 RUN --mount=type=cache,target=/root/.cache/uv \
   uv sync --no-dev
 
