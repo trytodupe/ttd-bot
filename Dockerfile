@@ -9,6 +9,7 @@ ARG ALL_PROXY
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_FROZEN=1
 ENV UV_LINK_MODE=copy
+ENV UV_INDEX_URL=https://pypi.mirrors.ustc.edu.cn/simple/
 
 RUN if [ -f /etc/apt/sources.list ]; then \
       sed -i 's|http://deb.debian.org|http://mirrors.ustc.edu.cn|g; s|http://security.debian.org|http://mirrors.ustc.edu.cn|g' /etc/apt/sources.list; \
