@@ -18,10 +18,12 @@ public_setu_api = "Anosu API"
 
 # LoliconAPI  httpx 配置
 [clovers_setu_collection.httpx_config.LoliconAPI]
-# proxy = "http://172.28.96.1:7890"
+proxy = "http://172.16.20.203:20172"
 
 # MirlKoiAPI httpx 配置
 [clovers_setu_collection.httpx_config.MirlKoiAPI]
+proxy = "http://172.16.20.203:20172"
 
 # AnosuAPI httpx 配置
 [clovers_setu_collection.httpx_config.AnosuAPI]
+proxy = "http://172.16.20.203:20172"
