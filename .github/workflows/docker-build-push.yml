@@ -42,6 +42,10 @@ jobs:
           tags: tag:ci
 
       - name: Deploy to server
-        run: |
-          ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} github@${{ secrets.SSH_HOST }}
-                    "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }}"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: ${{ secrets.DEPLOY_SCRIPT }}
