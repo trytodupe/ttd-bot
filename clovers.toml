@@ -14,7 +14,7 @@ private_setu_api  = "Lolicon API"
 # 群聊图片限制（别关）
 public_setu_limit = true
 # 群聊使用的图片api
-public_setu_api = "Anosu API"
+public_setu_api = "Lolicon API"
 
 # LoliconAPI  httpx 配置
 [clovers_setu_collection.httpx_config.LoliconAPI]
