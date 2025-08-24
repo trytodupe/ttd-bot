@@ -41,6 +41,10 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      - name: Add host key
+        run: |
+          ssh-keyscan ${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }} >> ~/.ssh/known_hosts
+
       - name: Deploy to server
         run: |
           tailscale ssh github@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }}
