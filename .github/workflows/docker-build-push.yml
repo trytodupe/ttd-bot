@@ -41,13 +41,7 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      - name: Add host key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
       - name: Deploy to server
         run: |
-          ssh github@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }}
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} github@${{ secrets.SSH_HOST }}
                     "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }}"
