@@ -49,5 +49,5 @@ jobs:
 
       - name: Deploy to server
         run: |
-          tailscale ssh github@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }}
+          ssh github@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }}
                     "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }}"
