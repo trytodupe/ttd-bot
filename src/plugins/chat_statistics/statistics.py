@@ -24,7 +24,16 @@ class ChatStatistics:
     
     def add_message(self, message_time: datetime.datetime):
         """Add a message to the statistics"""
-        hour = message_time.hour
+        # Convert UTC time to local time (UTC+8)
+        if message_time.tzinfo is None:
+            # If naive datetime, assume it's UTC
+            message_time = message_time.replace(tzinfo=datetime.timezone.utc)
+        
+        # Convert to UTC+8 (China Standard Time)
+        local_tz = datetime.timezone(datetime.timedelta(hours=8))
+        local_time = message_time.astimezone(local_tz)
+        hour = local_time.hour
+        
         self.hourly_distribution[hour] += 1
         self.total_messages += 1
     
@@ -83,9 +92,18 @@ class ActiveStatistics:
     
     def add_message(self, message_time: datetime.datetime):
         """Add a message to the statistics (marks the hour as active for that date)"""
-        hour = message_time.hour
+        # Convert UTC time to local time (UTC+8)
+        if message_time.tzinfo is None:
+            # If naive datetime, assume it's UTC
+            message_time = message_time.replace(tzinfo=datetime.timezone.utc)
+        
+        # Convert to UTC+8 (China Standard Time)
+        local_tz = datetime.timezone(datetime.timedelta(hours=8))
+        local_time = message_time.astimezone(local_tz)
+        hour = local_time.hour
+        
         # Use date only (ignore time) to track unique active days
-        date = message_time.date()
+        date = local_time.date()
         self.hourly_active_days[hour].add(date)
     
     def get_hourly_active_counts(self) -> Dict[int, int]:
