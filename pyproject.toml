@@ -1,6 +1,6 @@
 [project]
 name = "ttd-bot"
-version = "1.2.5"
+version = "1.2.6"
 description = "ttd-bot"
 readme = "README.md"
 requires-python = ">=3.12, <4.0"
@@ -30,6 +30,8 @@ dependencies = [
     "nonebot-plugin-groupmate-waifu>=0.27",
     "clovers-setu-collection>=0.2.3.post1",
     "nonebot-plugin-essence-message @ git+https://github.com/trytodupe/nonebot-plugin-essence-message@d120b28fa38e5eff5516ea204831314bf136c256",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
 ]
 
 [tool.nonebot]
