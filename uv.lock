@@ -2553,7 +2553,7 @@ asyncpg = [
 
 [[package]]
 name = "ttd-bot"
-version = "1.2.7"
+version = "1.2.8"
 source = { virtual = "." }
 dependencies = [
     { name = "clovers-setu-collection" },
