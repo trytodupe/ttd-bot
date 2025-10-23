@@ -43,7 +43,6 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           use-cache: 'true'
           tags: tag:ci
-          ephemeral: true
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
