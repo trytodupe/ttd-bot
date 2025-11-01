@@ -49,10 +49,17 @@ async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
     """获取指定tag的commit SHA"""
     try:
         async with httpx.AsyncClient() as client:
+            headers = {"Accept": "application/vnd.github.v3+json"}
+            
+            # 获取token（如果可用）
+            token = await get_github_token()
+            if token:
+                headers["Authorization"] = f"token {token}"
+            
             # 先尝试获取tag信息
             response = await client.get(
                 f"{GITHUB_API_BASE}/git/refs/tags/{tag_name}",
-                headers={"Accept": "application/vnd.github.v3+json"},
+                headers=headers,
                 timeout=30.0
             )
             
@@ -63,7 +70,7 @@ async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
                     # Annotated tag，需要再获取tag对象
                     tag_response = await client.get(
                         data["object"]["url"],
-                        headers={"Accept": "application/vnd.github.v3+json"},
+                        headers=headers,
                         timeout=30.0
                     )
                     if tag_response.status_code == 200:
@@ -87,11 +94,18 @@ async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[di
     """获取两个commit之间的所有commits"""
     try:
         async with httpx.AsyncClient() as client:
+            headers = {"Accept": "application/vnd.github.v3+json"}
+            
+            # 获取token（如果可用）
+            token = await get_github_token()
+            if token:
+                headers["Authorization"] = f"token {token}"
+            
             if base_sha:
                 # 比较两个commits
                 response = await client.get(
                     f"{GITHUB_API_BASE}/compare/{base_sha}...{head_sha}",
-                    headers={"Accept": "application/vnd.github.v3+json"},
+                    headers=headers,
                     timeout=30.0
                 )
             else:
@@ -99,7 +113,7 @@ async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[di
                 response = await client.get(
                     f"{GITHUB_API_BASE}/commits",
                     params={"sha": head_sha, "per_page": 10},
-                    headers={"Accept": "application/vnd.github.v3+json"},
+                    headers=headers,
                     timeout=30.0
                 )
             
@@ -124,10 +138,17 @@ async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
     """获取指定commit上的所有版本号tag（不包括LAST_DEPLOYED_TAG）"""
     try:
         async with httpx.AsyncClient() as client:
+            headers = {"Accept": "application/vnd.github.v3+json"}
+            
+            # 获取token（如果可用）
+            token = await get_github_token()
+            if token:
+                headers["Authorization"] = f"token {token}"
+            
             # 获取所有指向该commit的tag
             response = await client.get(
                 f"{GITHUB_API_BASE}/git/refs/tags",
-                headers={"Accept": "application/vnd.github.v3+json"},
+                headers=headers,
                 timeout=30.0
             )
             
