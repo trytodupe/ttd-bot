@@ -31,7 +31,7 @@ RUN chmod +x /start.sh
 ENV APP_MODULE=main:app
 ENV MAX_WORKERS=1
 
-COPY bot.py ./docker/main.py .env ./docker/prestart.sh /app/
+COPY bot.py ./docker/main.py ./docker/prestart.sh /app/
 COPY src /app/src/
 RUN chmod +x /app/prestart.sh
 

@@ -1,17 +1,19 @@
 services:
   nonebot:
     build: .
-    image: trytodupe/ttd-bot:latest
+    image: trytodupe/ttd-bot:${VERSION:-latest}
     ports:
       - "8901:8901"
     environment:
       HOST: 0.0.0.0
       PORT: 8901
+      VERSION: ${VERSION:-latest}
       # LOG_LEVEL: DEBUG
     volumes:
       - ./data:/app/data
       - ./db:/app/db
       - /usr/share/fonts:/usr/share/fonts
       - ./.env:/app/.env:ro
+      - ./clovers.toml:/app/clovers.toml:ro
       # - ./fonts:/usr/share/fonts
     restart: always

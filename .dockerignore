@@ -2,6 +2,7 @@
 
 .env
 .env.*
+clovers.toml
 .dockerignore
 Dockerfile
 docker-compose.yml

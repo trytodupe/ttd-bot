@@ -147,3 +147,5 @@ db_dev/
 
 .devdbrc
 .env
+
+clovers.toml
