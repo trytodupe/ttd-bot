@@ -1,11 +1,9 @@
 services:
   nonebot:
     build: .
-    image: trytodupe/ttd-bot:v1.2.0
+    image: trytodupe/ttd-bot:latest
     ports:
       - "8901:8901"
-    env_file:
-      - .env
     environment:
       HOST: 0.0.0.0
       PORT: 8901
@@ -14,5 +12,6 @@ services:
       - ./data:/app/data
       - ./db:/app/db
       - /usr/share/fonts:/usr/share/fonts
+      - ./.env:/app/.env:ro
       # - ./fonts:/usr/share/fonts
     restart: always
