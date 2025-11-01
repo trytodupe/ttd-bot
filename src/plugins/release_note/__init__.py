@@ -263,18 +263,9 @@ def format_release_note(commits: list[dict], old_version: Optional[str], new_ver
     lines.append("📝 更新内容:")
     
     # 添加commit messages
-    max_display = plugin_config.max_commits_display
-    max_length = plugin_config.max_message_length
-    
-    for i, commit in enumerate(commits[:max_display]):
+    for commit in commits:
         message = commit["commit"]["message"].split("\n")[0]  # 只取第一行
-        # 截断过长的消息
-        if len(message) > max_length:
-            message = message[:max_length - 3] + "..."
         lines.append(f"  • {message}")
-    
-    if len(commits) > max_display:
-        lines.append(f"  ... 以及其他 {len(commits) - max_display} 个更新")
     
     return "\n".join(lines)
 

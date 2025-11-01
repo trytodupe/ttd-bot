@@ -15,10 +15,6 @@ class Config(BaseModel):
     
     # NapCat API endpoint
     napcat_api_base: str = ""
-    
-    # Release note formatting
-    max_commits_display: int = 10
-    max_message_length: int = 60
 
 
 plugin_config = get_plugin_config(Config)
