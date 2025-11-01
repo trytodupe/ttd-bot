@@ -1,6 +1,6 @@
 [project]
 name = "ttd-bot"
-version = "1.2.9"
+version = "1.2.10"
 description = "ttd-bot"
 readme = "README.md"
 requires-python = ">=3.12, <4.0"
@@ -29,9 +29,10 @@ dependencies = [
     "nonebot-plugin-clovers>=0.3.5",
     "nonebot-plugin-groupmate-waifu>=0.27",
     "clovers-setu-collection>=0.2.3.post1",
-    "nonebot-plugin-essence-message @ git+https://github.com/trytodupe/nonebot-plugin-essence-message@d120b28fa38e5eff5516ea204831314bf136c256",
+    # "nonebot-plugin-essence-message @ git+https://github.com/trytodupe/nonebot-plugin-essence-message@d120b28fa38e5eff5516ea204831314bf136c256",
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
+    "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
 ]
 
 [tool.nonebot]
@@ -56,7 +57,8 @@ plugins = [
     "nonebot_plugin_analysis_bilibili",
     "nonebot_plugin_groupmate_waifu",
     "nonebot_plugin_mc_server_status",
-    "nonebot_plugin_essence_message",
+    # "nonebot_plugin_essence_message",
+    "nonebot_plugin_steam_game_status",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
