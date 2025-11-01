@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 import httpx
+import os
 
 from nonebot import get_driver, require, on_command
 from nonebot.plugin import PluginMetadata
@@ -38,9 +39,9 @@ async def get_github_token() -> Optional[str]:
 
 async def get_current_version() -> Optional[str]:
     """从环境变量获取当前版本"""
-    version = plugin_config.version
+    version = os.getenv("VERSION")
     if not version:
-        logger.warning("VERSION not found in configuration")
+        logger.warning("VERSION not found in environment variables")
     return version
 
 

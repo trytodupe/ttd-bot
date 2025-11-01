@@ -4,7 +4,6 @@ from nonebot import get_plugin_config
 
 class Config(BaseModel):
     """Plugin configuration"""
-    version: str = ""
     github_token: str = ""
     
     # GitHub repository configuration
