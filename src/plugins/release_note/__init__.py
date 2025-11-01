@@ -141,38 +141,15 @@ async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
             # 检查每个tag是否指向该commit
             for tag_ref in all_tags:
                 tag_name = tag_ref["ref"].replace("refs/tags/", "")
+                tag_sha = tag_ref["object"]["sha"]
                 
                 # 跳过last-deployed tag
                 if tag_name == LAST_DEPLOYED_TAG:
                     continue
                 
-                # 获取该tag的commit SHA
-                tag_response = await client.get(
-                    tag_ref["url"],
-                    headers={"Accept": "application/vnd.github.v3+json"},
-                    timeout=30.0
-                )
-                
-                if tag_response.status_code == 200:
-                    tag_data = tag_response.json()
-                    # 处理annotated tag和lightweight tag
-                    tag_commit_sha = None
-                    if tag_data["object"]["type"] == "tag":
-                        # Annotated tag，获取指向的commit
-                        annotation_response = await client.get(
-                            tag_data["object"]["url"],
-                            headers={"Accept": "application/vnd.github.v3+json"},
-                            timeout=30.0
-                        )
-                        if annotation_response.status_code == 200:
-                            tag_commit_sha = annotation_response.json()["object"]["sha"]
-                    else:
-                        # Lightweight tag，直接是commit
-                        tag_commit_sha = tag_data["object"]["sha"]
-                    
-                    # 如果该tag指向我们要找的commit，添加到列表
-                    if tag_commit_sha == commit_sha:
-                        version_tags.append(tag_name)
+                # 如果该tag指向我们要找的commit，添加到列表
+                if tag_sha == commit_sha:
+                    version_tags.append(tag_name)
             
             return version_tags
                 
@@ -320,6 +297,7 @@ async def check_and_publish_release_note():
         
         # 发布到个人签名
         published = await publish_release_note(release_note)
+        logger.info(f"Release note published: {published}\nContent:\n{release_note}")
         
         if published:
             # 更新last-deployed tag
