@@ -33,6 +33,7 @@ dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
+    "nonebot-plugin-parser>=2.3.0",
 ]
 
 [tool.nonebot]
@@ -59,6 +60,7 @@ plugins = [
     "nonebot_plugin_mc_server_status",
     # "nonebot_plugin_essence_message",
     "nonebot_plugin_steam_game_status",
+    "nonebot_plugin_parser",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
