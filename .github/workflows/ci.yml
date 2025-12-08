@@ -50,5 +50,6 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: github
           password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }}"
