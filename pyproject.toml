@@ -33,7 +33,7 @@ dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
-    "nonebot-plugin-parser>=2.3.0",
+    "nonebot-plugin-parser @ git+https://github.com/trytodupe/nonebot-plugin-parser@c2b293a323e106757fe2f76d969db5ddc41d35af",
 ]
 
 [tool.nonebot]
@@ -55,7 +55,7 @@ plugins = [
     "nonebot_plugin_deer_pipe",
     "nonebot_plugin_learning_chat",
     "nonebot_plugin_auto_enter_group",
-    "nonebot_plugin_analysis_bilibili",
+    # "nonebot_plugin_analysis_bilibili",
     "nonebot_plugin_groupmate_waifu",
     "nonebot_plugin_mc_server_status",
     # "nonebot_plugin_essence_message",

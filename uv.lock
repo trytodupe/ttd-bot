@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12, <4.0"
 
 [[package]]
@@ -154,7 +154,7 @@ wheels = [
 
 [[package]]
 name = "apilmoji"
-version = "0.2.1"
+version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -162,9 +162,9 @@ dependencies = [
     { name = "httpx" },
     { name = "pillow" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/e5/c3215c4afa276dc455ffe78b56f06fc975f72154c050a3643967e24119ed/apilmoji-0.2.1.tar.gz", hash = "sha256:5058c45fe326a8722d61f116b9238e2d0cb853d24f3e03ea5c42f933f7e044fa", size = 8240, upload-time = "2025-12-07T04:50:26.956Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/83/708aa87dc4a099a5a248672996c5974932491ba867c2cd0235db0199a89f/apilmoji-0.2.4.tar.gz", hash = "sha256:4bbf767b5f414f5a5fe42f7172c9d210ca393c7730a0816ad0a4b276900381c4", size = 8460, upload-time = "2025-12-20T05:46:27.644Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/3d/6ee486a3a781bca7eb3314fc2789e2a420fea6d44d3bd53f757e1729f335/apilmoji-0.2.1-py3-none-any.whl", hash = "sha256:6fccd6d5fea82ebf7f722fac1ae4b14607dca08c62f4c74085d07e601b16dcd1", size = 8433, upload-time = "2025-12-07T04:50:27.925Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/d6/4a2c058e585ef403ba118dc756259cf63dc3b8d660528257a16f182f2b36/apilmoji-0.2.4-py3-none-any.whl", hash = "sha256:ec22f32bae6d0938c40bcac0a48e264be9fff55ed3629666820ed31671f78c4f", size = 9036, upload-time = "2025-12-20T05:46:26.333Z" },
 ]
 
 [package.optional-dependencies]
@@ -1850,8 +1850,8 @@ default = [
 
 [[package]]
 name = "nonebot-plugin-parser"
-version = "2.3.0"
-source = { registry = "https://pypi.org/simple" }
+version = "2.3.4"
+source = { git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=c2b293a323e106757fe2f76d969db5ddc41d35af#c2b293a323e106757fe2f76d969db5ddc41d35af" }
 dependencies = [
     { name = "aiofiles" },
     { name = "apilmoji", extra = ["tqdm"] },
@@ -1867,10 +1867,6 @@ dependencies = [
     { name = "nonebot2" },
     { name = "pillow" },
     { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/5d/df9eca343b89d730b93c9489e355bdc92d81f301d50024288064f586dada/nonebot_plugin_parser-2.3.0.tar.gz", hash = "sha256:b078f2d45b8f7a58c8964766d7cea754c63ba17e9020b74fb78a923fe4bd9379", size = 2332360, upload-time = "2025-12-05T04:07:33.32Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/18/c8f4a4846646806c2e79b953acfa45a95e7437bb89fc7a7e2a8a810f7010/nonebot_plugin_parser-2.3.0-py3-none-any.whl", hash = "sha256:84df96ee8196ca9da6556d9be84ce52ace2005921b1b72f65bfbfafc4a9cb821", size = 2352138, upload-time = "2025-12-05T04:07:31.776Z" },
 ]
 
 [[package]]
@@ -2951,7 +2947,7 @@ requires-dist = [
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-mc-server-status", specifier = ">=0.4.1" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
-    { name = "nonebot-plugin-parser", specifier = ">=2.3.0" },
+    { name = "nonebot-plugin-parser", git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=c2b293a323e106757fe2f76d969db5ddc41d35af" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
     { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.9.0" },
