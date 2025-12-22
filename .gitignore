@@ -149,3 +149,5 @@ db_dev/
 .env
 
 clovers.toml
+
+.serena/
