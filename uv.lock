@@ -1860,7 +1860,7 @@ default = [
 [[package]]
 name = "nonebot-plugin-parser"
 version = "2.3.4"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=043b1676ef2f08a218f18e7bdd02716b97d5b0e2#043b1676ef2f08a218f18e7bdd02716b97d5b0e2" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=f7a1dd3e63e4c3946d8308f7d786e54d4a243712#f7a1dd3e63e4c3946d8308f7d786e54d4a243712" }
 dependencies = [
     { name = "aiofiles" },
     { name = "apilmoji", extra = ["tqdm"] },
@@ -2961,7 +2961,7 @@ requires-dist = [
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-mc-server-status", specifier = ">=0.4.1" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
-    { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=043b1676ef2f08a218f18e7bdd02716b97d5b0e2" },
+    { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=f7a1dd3e63e4c3946d8308f7d786e54d4a243712" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
     { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.9.0" },

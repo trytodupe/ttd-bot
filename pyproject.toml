@@ -33,7 +33,7 @@ dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
-    "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@043b1676ef2f08a218f18e7bdd02716b97d5b0e2",
+    "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@f7a1dd3e63e4c3946d8308f7d786e54d4a243712",
 ]
 
 [tool.nonebot]
