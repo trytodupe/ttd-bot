@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12, <4.0"
 
 [[package]]
@@ -1824,15 +1824,11 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-mc-server-status"
 version = "0.4.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/trytodupe/nonebot_plugins_nikissXI?subdirectory=nonebot_plugin_mc_server_status&rev=a0dac5022d62141bf58464922914ffc6be16169f#a0dac5022d62141bf58464922914ffc6be16169f" }
 dependencies = [
     { name = "mcstatus" },
     { name = "nonebot-adapter-onebot" },
     { name = "nonebot2" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/b7/f475baabbed1e2dc37ddd1da9bf6b6f2cc72897b332c59205f41578e4376/nonebot_plugin_mc_server_status-0.4.1.tar.gz", hash = "sha256:7f905824860f588ebe2908f8354f7a9fe542e994bace1dbe4157d1956e1f33dc", size = 6073, upload-time = "2025-07-14T06:29:27.846Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/bf/057ce14931245834f62f5003a4944d6985017b860cc6b41ebc18e27ecc87/nonebot_plugin_mc_server_status-0.4.1-py3-none-any.whl", hash = "sha256:0dd2e5a31a0a5ec63cf3c6fdf8c613eba41909d8bd6898ea958f6c5c93f22144", size = 7043, upload-time = "2025-07-14T06:29:26.703Z" },
 ]
 
 [[package]]
@@ -2959,7 +2955,7 @@ requires-dist = [
     { name = "nonebot-plugin-groupmate-waifu", specifier = ">=0.27" },
     { name = "nonebot-plugin-learning-chat", git = "https://github.com/trytodupe/nonebot-plugin-learning-chat?rev=45c39f2af8b79d2113a1fdc96e0a51de65427f56" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
-    { name = "nonebot-plugin-mc-server-status", specifier = ">=0.4.1" },
+    { name = "nonebot-plugin-mc-server-status", git = "https://github.com/trytodupe/nonebot_plugins_nikissXI?subdirectory=nonebot_plugin_mc_server_status&rev=a0dac5022d62141bf58464922914ffc6be16169f" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
     { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=f7a1dd3e63e4c3946d8308f7d786e54d4a243712" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },

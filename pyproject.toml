@@ -25,7 +25,7 @@ dependencies = [
     "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@45c39f2af8b79d2113a1fdc96e0a51de65427f56",
     "nonebot-plugin-auto-enter-group",
     "nonebot-plugin-analysis-bilibili>=2.8.1",
-    "nonebot-plugin-mc-server-status>=0.4.1",
+    "nonebot-plugin-mc-server-status @ git+https://github.com/trytodupe/nonebot_plugins_nikissXI@a0dac5022d62141bf58464922914ffc6be16169f#subdirectory=nonebot_plugin_mc_server_status",
     "nonebot-plugin-clovers>=0.3.5",
     "nonebot-plugin-groupmate-waifu>=0.27",
     "clovers-setu-collection>=0.2.3.post1",
