@@ -3,7 +3,7 @@ name = "ttd-bot"
 version = "1.2.11"
 description = "ttd-bot"
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "gunicorn>=23.0.0",
     "uvicorn[standard]>=0.35.0",
