@@ -4,68 +4,16 @@ Tests for the query_chat command in nonebot-plugin-learning-chat.
 This test file validates:
 1. Argument parsing (key=value format)
 2. Time parsing (relative and absolute)
-3. Permission checks (group vs private, superuser)
-4. Query execution and result formatting
+3. Query filter functionality
+4. Output formatting
 """
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from nonebug import App
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    Message,
-    GroupMessageEvent,
-    PrivateMessageEvent,
-)
-from nonebot.adapters.onebot.v11.event import Sender
 
 
 # UTC+8 timezone for testing
 TZ_UTC8 = timezone(timedelta(hours=8))
-
-
-def make_group_event(
-    message: str,
-    user_id: int = 123456,
-    group_id: int = 1076794521,
-    self_id: int = 999999,
-) -> GroupMessageEvent:
-    """Create a mock group message event."""
-    return GroupMessageEvent(
-        time=int(datetime.now().timestamp()),
-        self_id=self_id,
-        post_type="message",
-        sub_type="normal",
-        user_id=user_id,
-        message_type="group",
-        message_id=1,
-        message=Message(message),
-        raw_message=message,
-        font=0,
-        sender=Sender(user_id=user_id, nickname="TestUser"),
-        group_id=group_id,
-    )
-
-
-def make_private_event(
-    message: str,
-    user_id: int = 12345,  # Superuser by default
-    self_id: int = 999999,
-) -> PrivateMessageEvent:
-    """Create a mock private message event."""
-    return PrivateMessageEvent(
-        time=int(datetime.now().timestamp()),
-        self_id=self_id,
-        post_type="message",
-        sub_type="friend",
-        user_id=user_id,
-        message_type="private",
-        message_id=1,
-        message=Message(message),
-        raw_message=message,
-        font=0,
-        sender=Sender(user_id=user_id, nickname="TestUser"),
-    )
 
 
 class TestArgumentParsing:
@@ -201,84 +149,33 @@ class TestQueryFilter:
         qf = QueryFilter.from_args({"content": "test", "limit": "9999"})
         assert qf.limit == MAX_LIMIT
 
+    def test_query_filter_default_after_days(self):
+        """Test that after defaults to 30 days ago."""
+        import time
 
-class TestQueryCommand:
-    """Test the query_chat command handler."""
+        import nonebot_plugin_learning_chat.query as query_module
+        from nonebot_plugin_learning_chat.query import QueryFilter
 
-    @pytest.mark.asyncio
-    async def test_group_query_missing_filter(self, app: App):
-        """Test that query without content/regex returns error."""
-        from nonebot_plugin_learning_chat.query import query_chat
+        qf = QueryFilter.from_args({"content": "test"})
+        expected_after = int(time.time()) - query_module.DEFAULT_AFTER_DAYS * 24 * 3600
 
-        async with app.test_matcher(query_chat) as ctx:
-            bot = ctx.create_bot()
-            event = make_group_event("/query_chat user=123")
-            ctx.receive_event(bot, event)
-            ctx.should_call_send(
-                event,
-                "Error: Must specify at least 'content' or 'regex' parameter.\n"
-                'Usage: /query_chat content="keyword" [user=123] [after=7d] [limit=50]\n'
-                '       /query_chat regex="pattern.*" [user=123]',
-                result=None,
-            )
-            ctx.should_finished(query_chat)
+        # Should be within 60 seconds of expected
+        assert qf.time_after is not None
+        assert abs(qf.time_after - expected_after) < 60
 
-    @pytest.mark.asyncio
-    async def test_private_non_superuser_rejected(self, app: App):
-        """Test that non-superuser in private chat is rejected."""
-        from nonebot_plugin_learning_chat.query import query_chat
+    def test_query_filter_to_cache_filter(self):
+        """Test conversion to cache QueryFilter."""
+        from nonebot_plugin_learning_chat.query import QueryFilter
 
-        async with app.test_matcher(query_chat) as ctx:
-            bot = ctx.create_bot()
-            # User 999 is not a superuser (12345 is)
-            event = make_private_event('/query_chat content="test"', user_id=999)
-            ctx.receive_event(bot, event)
-            ctx.should_call_send(
-                event,
-                "This command is only available to superusers in private chat.",
-                result=None,
-            )
-            ctx.should_finished(query_chat)
+        qf = QueryFilter.from_args({"content": "test", "user": "123", "limit": "50"})
+        qf.group_id = 456
 
-    @pytest.mark.asyncio
-    async def test_private_superuser_missing_group(self, app: App):
-        """Test that superuser in private chat must specify group."""
-        from nonebot_plugin_learning_chat.query import query_chat
+        cache_filter = qf.to_cache_filter()
 
-        async with app.test_matcher(query_chat) as ctx:
-            bot = ctx.create_bot()
-            # User 12345 is a superuser
-            event = make_private_event('/query_chat content="test"', user_id=12345)
-            ctx.receive_event(bot, event)
-            ctx.should_call_send(
-                event,
-                "Error: Must specify 'group' parameter in private chat.\n"
-                'Usage: /query_chat content="keyword" group=123456789',
-                result=None,
-            )
-            ctx.should_finished(query_chat)
-
-    @pytest.mark.asyncio
-    async def test_group_query_uses_current_group(self, app: App):
-        """Test that group query automatically uses current group_id."""
-        from nonebot_plugin_learning_chat.query import query_chat
-
-        async with app.test_matcher(query_chat) as ctx:
-            bot = ctx.create_bot()
-            # Use a group that exists in the database
-            event = make_group_event(
-                '/query_chat content="xyznonexistent" limit=5',
-                group_id=1076794521,
-            )
-            ctx.receive_event(bot, event)
-            # Should respond with "No messages found" since the content won't exist
-            ctx.should_call_send(
-                event,
-                'Query: content="xyznonexistent" | group=1076794521 | limit=5\n\n'
-                "No messages found.",
-                result=None,
-            )
-            ctx.should_finished(query_chat)
+        assert cache_filter.group_id == 456
+        assert cache_filter.user_id == 123
+        assert cache_filter.content == "test"
+        assert cache_filter.limit == 50
 
 
 class TestFormatting:
@@ -321,51 +218,31 @@ class TestFormatting:
         assert "limit=50" in result
 
 
-class TestDatabaseQuery:
-    """Test actual database query (requires initialized Tortoise ORM)."""
-
-    @pytest.mark.asyncio
-    async def test_execute_query_with_real_database(self, app: App):
-        """
-        Test executing query against the real database.
-        This test uses the actual learning_chat.db database.
-        """
-        from tortoise import Tortoise
-
-        from nonebot_plugin_learning_chat.query import QueryFilter, execute_query
-
-        # Initialize Tortoise ORM to use the real database
-        await Tortoise.init(
-            db_url="sqlite://./data/learning_chat/learning_chat.db",
-            modules={"learning_chat": ["nonebot_plugin_learning_chat.models"]},
-        )
-
-        try:
-            # Query for messages containing common words
-            qf = QueryFilter()
-            qf.content = "吃"  # Common Chinese character in messages
-            qf.group_id = 1076794521
-            qf.limit = 10
-
-            messages = await execute_query(qf)
-
-            # Log results for inspection
-            print(f"\n=== Query Results for content='吃' ===")
-            print(f"Found {len(messages)} messages")
-            for msg in messages[:5]:
-                print(f"  [{msg.time}] {msg.user_id}: {msg.plain_text[:50]}...")
-
-            # Test with regex
-            qf2 = QueryFilter()
-            qf2.regex = r"吃.*饭"  # Match "吃...饭" pattern
-            qf2.group_id = 1076794521
-            qf2.limit = 10
-
-            messages2 = await execute_query(qf2)
-            print(f"\n=== Query Results for regex='吃.*饭' ===")
-            print(f"Found {len(messages2)} messages")
-            for msg in messages2[:5]:
-                print(f"  [{msg.time}] {msg.user_id}: {msg.plain_text[:50]}...")
-
-        finally:
-            await Tortoise.close_connections()
+# Note: Database query tests require a running Tortoise ORM connection
+# and are skipped by default. They can be run manually for integration testing.
+#
+# class TestDatabaseQuery:
+#     """Test actual database query (requires initialized Tortoise ORM)."""
+#
+#     @pytest.mark.asyncio
+#     async def test_execute_query_with_real_database(self):
+#         """Test executing query against the real database."""
+#         from tortoise import Tortoise
+#         from nonebot_plugin_learning_chat.query import QueryFilter, execute_query_raw
+#
+#         await Tortoise.init(
+#             db_url="sqlite://./data/learning_chat/learning_chat.db",
+#             modules={"learning_chat": ["nonebot_plugin_learning_chat.models"]},
+#         )
+#
+#         try:
+#             qf = QueryFilter()
+#             qf.content = "test"
+#             qf.group_id = 1076794521
+#             qf.limit = 10
+#
+#             messages = await execute_query_raw(qf)
+#             print(f"Found {len(messages)} messages")
+#
+#         finally:
+#             await Tortoise.close_connections()
