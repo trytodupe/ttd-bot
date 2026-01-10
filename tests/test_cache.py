@@ -483,12 +483,11 @@ class TestTimeMatching:
             assert result.needs_incremental is False
 
     def test_fuzzy_time_match(self):
-        """Test fuzzy time match when cache.time_before is within 5 min of now."""
+        """Test fuzzy time match when no absolute time and high overlap with small gap."""
         from nonebot_plugin_learning_chat.cache import (
             CacheEntry,
             HotColdCache,
             QueryFilter,
-            TIME_FUZZY_WINDOW,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -497,7 +496,7 @@ class TestTimeMatching:
             )
 
             now = int(time.time())
-            # Cache with time_before = now - 2 minutes (within fuzzy window)
+            # Cache covers 1 hour, ending 2 minutes ago
             entry = CacheEntry(
                 group_id=123,
                 user_id=None,
@@ -510,9 +509,18 @@ class TestTimeMatching:
             )
             cache.put(entry)
 
-            # Query without time_before (implies "now")
+            # Query without time_before (implies "now"), no absolute time
+            # Overlap: (now-120) - (now-3600) = 3480 seconds
+            # Query duration: now - (now-3600) = 3600 seconds
+            # Overlap ratio: 3480/3600 = 96.7% > 90%
+            # Uncovered: 120 seconds < 600 seconds
+            # => Should trigger FUZZY_TIME
             query = QueryFilter(
-                group_id=123, content="test", time_after=now - 3600, limit=20
+                group_id=123,
+                content="test",
+                time_after=now - 3600,
+                limit=20,
+                has_absolute_time=False,
             )
             result = cache.get(query)
 
@@ -520,8 +528,8 @@ class TestTimeMatching:
             assert result.is_fuzzy is True
             assert result.needs_incremental is False
 
-    def test_fuzzy_time_no_match_outside_window(self):
-        """Test no fuzzy match when cache.time_before is too old."""
+    def test_fuzzy_time_no_match_with_absolute_time(self):
+        """Test no fuzzy match when absolute time is specified."""
         from nonebot_plugin_learning_chat.cache import (
             CacheEntry,
             HotColdCache,
@@ -534,28 +542,79 @@ class TestTimeMatching:
             )
 
             now = int(time.time())
-            # Cache with time_before = now - 10 minutes (outside fuzzy window)
+            # Cache covers 1 hour, ending 2 minutes ago
             entry = CacheEntry(
                 group_id=123,
                 user_id=None,
                 content="test",
                 regex=None,
                 time_after=now - 3600,
-                time_before=now - 600,  # 10 minutes ago
+                time_before=now - 120,  # 2 minutes ago
                 messages=[MockMessage(user_id=1, plain_text="test", time=now - 1800)],
                 total_count=1,
             )
             cache.put(entry)
 
-            # Query without time_before
+            # Query with has_absolute_time=True (user specified absolute time)
+            # Even though overlap is high, should NOT trigger fuzzy match
             query = QueryFilter(
-                group_id=123, content="test", time_after=now - 3600, limit=20
+                group_id=123,
+                content="test",
+                time_after=now - 3600,
+                limit=20,
+                has_absolute_time=True,  # User specified absolute time
             )
             result = cache.get(query)
 
-            # Should trigger incremental query or no match
-            # (depends on overlap ratio)
+            # Should trigger incremental query instead of fuzzy match
+            assert result is not None
+            assert result.is_fuzzy is False
+            assert result.needs_incremental is True
+
+    def test_fuzzy_time_no_match_outside_window(self):
+        """Test no fuzzy match when uncovered duration > 10 minutes."""
+        from nonebot_plugin_learning_chat.cache import (
+            CacheEntry,
+            HotColdCache,
+            QueryFilter,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = HotColdCache(
+                hot_size=5, cold_size=10, cache_file=Path(tmpdir) / "cache.pkl"
+            )
+
+            now = int(time.time())
+            # Cache with time_before = now - 15 minutes
+            # Uncovered duration = 15 min = 900 seconds > 600 seconds
+            entry = CacheEntry(
+                group_id=123,
+                user_id=None,
+                content="test",
+                regex=None,
+                time_after=now - 3600,
+                time_before=now - 900,  # 15 minutes ago
+                messages=[MockMessage(user_id=1, plain_text="test", time=now - 1800)],
+                total_count=1,
+            )
+            cache.put(entry)
+
+            # Query without time_before, no absolute time
+            # Overlap ratio: (3600-900)/3600 = 75% < 90%
+            # Uncovered: 900 seconds > 600 seconds
+            # => Should NOT trigger FUZZY_TIME
+            query = QueryFilter(
+                group_id=123,
+                content="test",
+                time_after=now - 3600,
+                limit=20,
+                has_absolute_time=False,
+            )
+            result = cache.get(query)
+
+            # Should trigger incremental query (overlap > 40%)
             if result is not None:
+                assert result.is_fuzzy is False
                 assert result.needs_incremental is True
 
     def test_partial_overlap_incremental(self):
@@ -863,8 +922,9 @@ class TestFilePersistence:
             # Create new cache instance (should load from file)
             cache2 = HotColdCache(hot_size=2, cold_size=5, cache_file=cache_file)
 
-            # Cold cache should have been loaded
-            assert len(cache2.cold_cache) == 2  # 2 entries demoted to cold
+            # All 4 entries should be loaded (hot + cold are both persisted now)
+            # They are loaded into cold_cache on startup
+            assert len(cache2.cold_cache) == 4
 
     def test_corrupted_file_handled(self):
         """Test corrupted cache file is handled gracefully."""

@@ -60,46 +60,52 @@ class TestTimeParsing:
         """Test parsing relative time in days."""
         from nonebot_plugin_learning_chat.query import parse_time
 
-        result = parse_time("7d")
-        assert result is not None
+        ts, is_abs = parse_time("7d")
+        assert ts is not None
+        assert is_abs is False
         # Should be approximately 7 days ago
         expected = datetime.now(TZ_UTC8) - timedelta(days=7)
-        assert abs(result - int(expected.timestamp())) < 60  # Within 1 minute
+        assert abs(ts - int(expected.timestamp())) < 60  # Within 1 minute
 
     def test_parse_time_relative_hours(self):
         """Test parsing relative time in hours."""
         from nonebot_plugin_learning_chat.query import parse_time
 
-        result = parse_time("24h")
-        assert result is not None
+        ts, is_abs = parse_time("24h")
+        assert ts is not None
+        assert is_abs is False
         expected = datetime.now(TZ_UTC8) - timedelta(hours=24)
-        assert abs(result - int(expected.timestamp())) < 60
+        assert abs(ts - int(expected.timestamp())) < 60
 
     def test_parse_time_absolute_date(self):
         """Test parsing absolute date."""
         from nonebot_plugin_learning_chat.query import parse_time
 
-        result = parse_time("2025-01-01")
-        assert result is not None
+        ts, is_abs = parse_time("2025-01-01")
+        assert ts is not None
+        assert is_abs is True
         # Should be 2025-01-01 00:00:00 UTC+8
         expected = datetime(2025, 1, 1, tzinfo=TZ_UTC8)
-        assert result == int(expected.timestamp())
+        assert ts == int(expected.timestamp())
 
     def test_parse_time_absolute_datetime(self):
         """Test parsing absolute datetime."""
         from nonebot_plugin_learning_chat.query import parse_time
 
-        result = parse_time("2025-01-01 12:30")
-        assert result is not None
+        ts, is_abs = parse_time("2025-01-01 12:30")
+        assert ts is not None
+        assert is_abs is True
         expected = datetime(2025, 1, 1, 12, 30, tzinfo=TZ_UTC8)
-        assert result == int(expected.timestamp())
+        assert ts == int(expected.timestamp())
 
     def test_parse_time_invalid(self):
         """Test parsing invalid time returns None."""
         from nonebot_plugin_learning_chat.query import parse_time
 
-        assert parse_time("invalid") is None
-        assert parse_time("") is None
+        ts, _ = parse_time("invalid")
+        assert ts is None
+        ts, _ = parse_time("")
+        assert ts is None
 
 
 class TestQueryFilter:
