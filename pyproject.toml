@@ -22,7 +22,7 @@ dependencies = [
     "nonebot-plugin-auto-sendlike>=0.0.12",
     "nonebot-plugin-authrespond>=1.8",
     "nonebot-plugin-deer-pipe @ git+https://github.com/trytodupe/nonebot-plugin-deer-pipe@978b6ece2455f72c4c4a4ddc4763c129bd3c241a",
-    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@3bc11f08fec9402640f461b1525935464008856e",
+    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@1d94e943934beac15fcc532af252afb512a9dbc9",
     "nonebot-plugin-auto-enter-group",
     "nonebot-plugin-analysis-bilibili>=2.8.1",
     "nonebot-plugin-mc-server-status",
