@@ -138,7 +138,7 @@ def _format_online_result(
     version = result.version or "unknown"
     motd = result.motd or "unknown"
     players = f"{result.players_online}/{result.players_max}"
-    sample = ", ".join(result.player_sample) if result.player_sample else "none"
+    sample = ", ".join(result.player_sample) if result.player_sample else "愣着干嘛, 上号啊"
     return (
         f"Server: {result.ip} [{version}]\n"
         f"Players: {players} | Ping: {ping} | Uptime: {uptime}\n"
