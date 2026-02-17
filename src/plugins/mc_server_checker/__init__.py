@@ -49,6 +49,9 @@ _POLL_INTERVAL_SECONDS = max(1, int(plugin_config.mc_server_checker_interval_sec
 _STATE_LOCK = asyncio.Lock()
 _POLL_LOCK = asyncio.Lock()
 
+_PLAYER_ONLINE_PLAYERS: dict[tuple[int, str], dict[str, float]] = {}
+_PLAYER_LAST_OFFLINE_AT: dict[tuple[int, str], dict[str, float]] = {}
+
 _QUERY_TRIGGERS = {
     "\u4fe1\u606f",
     "\u798f",
@@ -172,15 +175,90 @@ def _format_change_message(
             if last_seen is not None
             else "unknown"
         )
-        return f"Server online: {result.ip} | Last seen: {last_seen_text}"
+        return f"[+] server {result.ip} | offline for: {last_seen_text}"
     online_since = server_state.get("online_since")
     uptime_text = (
         _format_duration(now - float(online_since))
         if online_since is not None
         else "unknown"
     )
-    error = result.error or "unknown"
-    return f"Server offline: {result.ip} | Uptime: {uptime_text} | Error: {error}"
+    return f"[-] server {result.ip} | online for: {uptime_text}"
+
+
+def _presence_key(group_id: int, ip: str) -> tuple[int, str]:
+    return (group_id, ip)
+
+
+def _clear_player_presence(group_id: int, ip: str) -> None:
+    key = _presence_key(group_id, ip)
+    _PLAYER_ONLINE_PLAYERS.pop(key, None)
+    _PLAYER_LAST_OFFLINE_AT.pop(key, None)
+
+
+def _mark_all_players_offline(group_id: int, ip: str, now: float) -> None:
+    key = _presence_key(group_id, ip)
+    previous = _PLAYER_ONLINE_PLAYERS.pop(key, None)
+    if not previous:
+        return
+    offline_map = _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
+    for player_name in previous.keys():
+        offline_map[player_name] = now
+
+
+def _build_player_diff_messages(
+    group_id: int, result: ServerCheckResult, now: float
+) -> list[str]:
+    if not result.online:
+        _mark_all_players_offline(group_id, result.ip, now)
+        return []
+
+    key = _presence_key(group_id, result.ip)
+    sample_players = {
+        name.strip()
+        for name in result.player_sample
+        if isinstance(name, str) and name.strip()
+    }
+
+    if key not in _PLAYER_ONLINE_PLAYERS:
+        _PLAYER_ONLINE_PLAYERS[key] = {name: now for name in sample_players}
+        _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
+        return []
+
+    previous_online = _PLAYER_ONLINE_PLAYERS.get(key, {})
+    offline_map = _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
+    messages: list[str] = []
+    next_online: dict[str, float] = {}
+
+    for player_name in sorted(sample_players):
+        if player_name in previous_online:
+            next_online[player_name] = previous_online[player_name]
+            continue
+
+        next_online[player_name] = now
+        offline_at = offline_map.get(player_name)
+        offline_for = (
+            _format_duration(now - float(offline_at))
+            if offline_at is not None
+            else "unknown"
+        )
+        messages.append(
+            f"[+] {player_name} {result.ip} | offline for: {offline_for}"
+        )
+
+    full_sample = len(sample_players) == result.players_online
+    for player_name, online_since in previous_online.items():
+        if player_name in sample_players:
+            continue
+        if not full_sample:
+            next_online[player_name] = online_since
+            continue
+
+        online_for = _format_duration(now - float(online_since))
+        messages.append(f"[-] {player_name} {result.ip} | online for: {online_for}")
+        offline_map[player_name] = now
+
+    _PLAYER_ONLINE_PLAYERS[key] = next_online
+    return messages
 
 
 async def _check_server(ip: str) -> ServerCheckResult:
@@ -220,7 +298,10 @@ async def _check_server(ip: str) -> ServerCheckResult:
 
 
 def _apply_status_update(
-    server_state: dict[str, Any], result: ServerCheckResult, now: float
+    group_id: int,
+    server_state: dict[str, Any],
+    result: ServerCheckResult,
+    now: float,
 ) -> str | None:
     prev_status = server_state.get("last_status", "unknown")
     change_message: str | None = None
@@ -237,6 +318,7 @@ def _apply_status_update(
         if prev_status == "online":
             server_state["last_seen_online_at"] = now
             change_message = _format_change_message(result, server_state, now)
+            _mark_all_players_offline(group_id, result.ip, now)
         server_state["last_status"] = "offline"
         server_state["last_error"] = result.error
     server_state["last_check_at"] = now
@@ -295,7 +377,9 @@ async def _run_check(send_changes: bool) -> None:
             for group_id, results in results_by_group.items():
                 for result in results:
                     server_state = get_server_state(state, group_id, result.ip)
-                    change_message = _apply_status_update(server_state, result, now)
+                    change_message = _apply_status_update(
+                        group_id, server_state, result, now
+                    )
                     if change_message:
                         change_messages.setdefault(group_id, []).append(change_message)
             save_state(state)
@@ -373,6 +457,7 @@ async def handle_remove(event: GroupMessageEvent, args: Message = CommandArg()) 
         removed = remove_server(state, int(event.group_id), ip)
         if removed:
             save_state(state)
+            _clear_player_presence(int(event.group_id), ip)
             response = f"Server removed: {ip}"
         else:
             response = f"Server not found: {ip}"
@@ -407,9 +492,11 @@ async def handle_status(event: GroupMessageEvent) -> None:
         state = load_state()
         for result in results:
             server_state = get_server_state(state, group_id, result.ip)
-            change_message = _apply_status_update(server_state, result, now)
+            change_message = _apply_status_update(group_id, server_state, result, now)
             if change_message:
                 change_messages.append(change_message)
+            player_messages = _build_player_diff_messages(group_id, result, now)
+            change_messages.extend(player_messages)
             if result.online:
                 blocks.append(_format_online_result(result, server_state, now))
             else:
