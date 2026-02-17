@@ -15,8 +15,8 @@ services:
       - ./uv.lock:/app/uv.lock:ro
       - ./data:/app/data
       - ./db:/app/db
-      - /usr/share/fonts:/usr/share/fonts
+      # - /usr/share/fonts:/usr/share/fonts
       - ./.env:/app/.env:ro
       - ./clovers.toml:/app/clovers.toml:ro
-      # - ./fonts:/usr/share/fonts
+      - ./fonts:/usr/share/fonts
     restart: always
