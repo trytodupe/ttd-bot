@@ -10,6 +10,9 @@ services:
       VERSION: ${VERSION:-latest}
       # LOG_LEVEL: DEBUG
     volumes:
+      - ./src:/app/src:ro
+      - ./bot.py:/app/bot.py:ro
+      - ./uv.lock:/app/uv.lock:ro
       - ./data:/app/data
       - ./db:/app/db
       - /usr/share/fonts:/usr/share/fonts

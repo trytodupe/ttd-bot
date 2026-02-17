@@ -3,13 +3,47 @@ name: ci
 on:
   push:
     tags:
-      - 'v*'
-      - 'V*'
+      - "v*"
+      - "V*"
 
 jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      deps_changed: ${{ steps.detect.outputs.deps_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: |
+          git fetch --force --tags origin
+
+      - name: Detect dependency changes
+        id: detect
+        run: |
+          DEPS_CHANGED=true
+          LAST_DEPLOY_REF="$(git rev-parse --verify --quiet "refs/tags/last-deployed^{commit}" || true)"
+          CURRENT_COMMIT="${GITHUB_SHA}"
+
+          if [ -n "$LAST_DEPLOY_REF" ] && git rev-parse --verify --quiet "$LAST_DEPLOY_REF^{commit}" >/dev/null; then
+            if git diff --quiet "$LAST_DEPLOY_REF..$CURRENT_COMMIT" -- uv.lock pyproject.toml Dockerfile; then
+              DEPS_CHANGED=false
+            fi
+          fi
+
+          echo "deps_changed=$DEPS_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "last_deploy_ref=${LAST_DEPLOY_REF:-<empty>}"
+          echo "deps_changed=$DEPS_CHANGED"
+
   docker:
     name: Docker
     runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.deps_changed == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,14 +68,17 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    needs: docker
+    needs:
+      - prepare
+      - docker
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.docker.result == 'success' || needs.docker.result == 'skipped') }}
     steps:
       - name: Tailscale
         uses: tailscale/github-action@v3
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          use-cache: 'true'
+          use-cache: "true"
           tags: tag:ci
 
       - name: Deploy to server
@@ -52,4 +89,4 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          script: "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }}"
+          script: "${{ secrets.DEPLOY_SCRIPT }} ${{ github.ref_name }} ${{ needs.prepare.outputs.deps_changed }}"
