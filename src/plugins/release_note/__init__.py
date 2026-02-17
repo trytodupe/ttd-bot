@@ -1,12 +1,13 @@
+import ast
+import json
 import logging
-from typing import Optional
-import httpx
 import os
+from typing import Any, Optional
 
-from nonebot import get_driver, require, on_command
-from nonebot.plugin import PluginMetadata
+import httpx
+from nonebot import get_bots, get_driver, on_command, require
 from nonebot.permission import SUPERUSER
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.plugin import PluginMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,114 @@ __plugin_meta__ = PluginMetadata(
     usage="Bot启动时自动检查版本更新并发布",
 )
 
-# 配置
 GITHUB_API_BASE = f"https://api.github.com/repos/{plugin_config.github_repo_owner}/{plugin_config.github_repo_name}"
 NAPCAT_API_BASE = plugin_config.napcat_api_base
 LAST_DEPLOYED_TAG = plugin_config.last_deployed_tag
 
+GITHUB_AUTH_FAILURE_HINTS = (
+    "bad credentials",
+    "expired",
+    "requires authentication",
+    "resource not accessible by personal access token",
+)
+
+_ALERT_KEYS_SENT: set[str] = set()
+
 driver = get_driver()
 
 
+def _parse_superusers(value: str) -> list[str]:
+    raw = value.strip()
+    if not raw:
+        return []
+
+    parsed: Any = None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        try:
+            parsed = ast.literal_eval(raw)
+        except Exception:
+            parsed = None
+
+    if isinstance(parsed, (list, tuple, set)):
+        return [str(item).strip().strip('"\'') for item in parsed if str(item).strip()]
+
+    if isinstance(parsed, str) and parsed.strip():
+        return [parsed.strip().strip('"\'')]
+
+    return [item.strip().strip('"\'') for item in raw.replace(",", " ").split() if item.strip()]
+
+
+def _resolve_primary_superuser() -> Optional[int]:
+    env_value = os.getenv("SUPERUSERS", "")
+    candidates = _parse_superusers(env_value)
+
+    if not candidates:
+        fallback_superusers = getattr(driver.config, "superusers", set())
+        if fallback_superusers:
+            normalized = [str(item).strip() for item in fallback_superusers if str(item).strip()]
+            candidates = sorted(
+                normalized,
+                key=lambda item: (not item.isdigit(), int(item) if item.isdigit() else item),
+            )
+
+    for candidate in candidates:
+        if candidate.isdigit():
+            return int(candidate)
+
+    logger.warning("No valid superuser found for release-note alert")
+    return None
+
+
+async def _send_private_alert(message: str) -> bool:
+    target_user_id = _resolve_primary_superuser()
+    if target_user_id is None:
+        return False
+
+    bots = get_bots()
+    if not bots:
+        logger.warning("No available bot to send release-note alert")
+        return False
+
+    bot = next(iter(bots.values()))
+    try:
+        await bot.call_api("send_private_msg", user_id=target_user_id, message=message)
+        logger.info("Sent release-note alert to superuser %s", target_user_id)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send release-note alert: %s", exc)
+        return False
+
+
+async def _send_private_alert_once(key: str, message: str) -> bool:
+    if key in _ALERT_KEYS_SENT:
+        return False
+
+    _ALERT_KEYS_SENT.add(key)
+    return await _send_private_alert(message)
+
+
+def _is_github_auth_failure(status_code: int, body_text: str) -> bool:
+    if status_code not in (401, 403):
+        return False
+
+    normalized_text = (body_text or "").lower()
+    return any(keyword in normalized_text for keyword in GITHUB_AUTH_FAILURE_HINTS)
+
+
+async def _notify_github_auth_failure(operation: str, status_code: int, body_text: str) -> bool:
+    if not _is_github_auth_failure(status_code, body_text):
+        return False
+
+    message = (
+        f"[release-note] GitHub token/auth failure ({status_code}) during {operation}. "
+        "Check GITHUB_TOKEN and repo tag permissions."
+    )
+    return await _send_private_alert_once("github-auth-invalid", message)
+
+
 async def get_github_token() -> Optional[str]:
-    """从环境变量获取GitHub Token"""
     token = plugin_config.github_token
     if not token:
         logger.warning("GITHUB_TOKEN not found in configuration")
@@ -38,7 +137,6 @@ async def get_github_token() -> Optional[str]:
 
 
 async def get_current_version() -> Optional[str]:
-    """从环境变量获取当前版本"""
     version = os.getenv("VERSION")
     if not version:
         logger.warning("VERSION not found in environment variables")
@@ -46,319 +144,309 @@ async def get_current_version() -> Optional[str]:
 
 
 async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
-    """获取指定tag的commit SHA"""
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
-            
-            # 获取token（如果可用）
             token = await get_github_token()
             if token:
                 headers["Authorization"] = f"token {token}"
-            
-            # 先尝试获取tag信息
+
             response = await client.get(
                 f"{GITHUB_API_BASE}/git/refs/tags/{tag_name}",
                 headers=headers,
-                timeout=30.0
+                timeout=30.0,
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
-                # tag可能是annotated tag或lightweight tag
                 if data["object"]["type"] == "tag":
-                    # Annotated tag，需要再获取tag对象
                     tag_response = await client.get(
                         data["object"]["url"],
                         headers=headers,
-                        timeout=30.0
+                        timeout=30.0,
                     )
                     if tag_response.status_code == 200:
                         return tag_response.json()["object"]["sha"]
-                else:
-                    # Lightweight tag，直接返回commit SHA
-                    return data["object"]["sha"]
-            elif response.status_code == 404:
-                logger.info(f"Tag {tag_name} not found")
+                    await _notify_github_auth_failure(
+                        "get_tag_commit_sha:resolve_annotated_tag",
+                        tag_response.status_code,
+                        tag_response.text,
+                    )
+                    logger.error(
+                        "Failed to resolve annotated tag %s: %s",
+                        tag_name,
+                        tag_response.status_code,
+                    )
+                    return None
+
+                return data["object"]["sha"]
+
+            if response.status_code == 404:
+                logger.info("Tag %s not found", tag_name)
                 return None
-            else:
-                logger.error(f"Failed to get tag {tag_name}: {response.status_code}")
-                return None
-                
-    except Exception as e:
-        logger.error(f"Error getting tag commit SHA: {e}")
+
+            await _notify_github_auth_failure(
+                "get_tag_commit_sha",
+                response.status_code,
+                response.text,
+            )
+            logger.error("Failed to get tag %s: %s", tag_name, response.status_code)
+            return None
+    except Exception as exc:
+        logger.error("Error getting tag commit SHA: %s", exc)
         return None
 
 
 async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[dict]:
-    """获取两个commit之间的所有commits"""
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
-            
-            # 获取token（如果可用）
             token = await get_github_token()
             if token:
                 headers["Authorization"] = f"token {token}"
-            
+
             if base_sha:
-                # 比较两个commits
                 response = await client.get(
                     f"{GITHUB_API_BASE}/compare/{base_sha}...{head_sha}",
                     headers=headers,
-                    timeout=30.0
+                    timeout=30.0,
                 )
             else:
-                # 如果没有base，获取最近的commits
                 response = await client.get(
                     f"{GITHUB_API_BASE}/commits",
                     params={"sha": head_sha, "per_page": 10},
                     headers=headers,
-                    timeout=30.0
+                    timeout=30.0,
                 )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 if base_sha and "commits" in data:
                     return data["commits"]
-                elif not base_sha:
+                if not base_sha:
                     return data
-                else:
-                    return []
-            else:
-                logger.error(f"Failed to get commits: {response.status_code}")
                 return []
-                
-    except Exception as e:
-        logger.error(f"Error getting commits: {e}")
+
+            await _notify_github_auth_failure(
+                "get_commits_between",
+                response.status_code,
+                response.text,
+            )
+            logger.error("Failed to get commits: %s", response.status_code)
+            return []
+    except Exception as exc:
+        logger.error("Error getting commits: %s", exc)
         return []
 
 
 async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
-    """获取指定commit上的所有版本号tag（不包括LAST_DEPLOYED_TAG）"""
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
-            
-            # 获取token（如果可用）
             token = await get_github_token()
             if token:
                 headers["Authorization"] = f"token {token}"
-            
-            # 获取所有指向该commit的tag
+
             response = await client.get(
                 f"{GITHUB_API_BASE}/git/refs/tags",
                 headers=headers,
-                timeout=30.0
+                timeout=30.0,
             )
-            
+
             if response.status_code != 200:
-                logger.error(f"Failed to get tags: {response.status_code}")
+                await _notify_github_auth_failure(
+                    "get_version_tags_at_commit",
+                    response.status_code,
+                    response.text,
+                )
+                logger.error("Failed to get tags: %s", response.status_code)
                 return []
-            
+
             all_tags = response.json()
             version_tags = []
-            
-            # 检查每个tag是否指向该commit
+
             for tag_ref in all_tags:
                 tag_name = tag_ref["ref"].replace("refs/tags/", "")
                 tag_sha = tag_ref["object"]["sha"]
-                
-                # 跳过last-deployed tag
                 if tag_name == LAST_DEPLOYED_TAG:
                     continue
-                
-                # 如果该tag指向我们要找的commit，添加到列表
                 if tag_sha == commit_sha:
                     version_tags.append(tag_name)
-            
+
             return version_tags
-                
-    except Exception as e:
-        logger.error(f"Error getting version tags at commit: {e}")
+    except Exception as exc:
+        logger.error("Error getting version tags at commit: %s", exc)
         return []
 
 
 async def update_tag(tag_name: str, commit_sha: str, token: str) -> bool:
-    """更新或创建tag到指定commit"""
     try:
         async with httpx.AsyncClient() as client:
             headers = {
                 "Accept": "application/vnd.github.v3+json",
                 "Authorization": f"token {token}",
             }
-            
-            # 先删除旧tag（如果存在）
+
             delete_response = await client.delete(
                 f"{GITHUB_API_BASE}/git/refs/tags/{tag_name}",
                 headers=headers,
-                timeout=30.0
+                timeout=30.0,
             )
-            
-            if delete_response.status_code in [204, 404]:
-                # 创建新tag
-                create_response = await client.post(
-                    f"{GITHUB_API_BASE}/git/refs",
-                    headers=headers,
-                    json={
-                        "ref": f"refs/tags/{tag_name}",
-                        "sha": commit_sha
-                    },
-                    timeout=30.0
+
+            if delete_response.status_code not in (204, 404):
+                await _notify_github_auth_failure(
+                    "update_tag:delete",
+                    delete_response.status_code,
+                    delete_response.text,
                 )
-                
-                if create_response.status_code == 201:
-                    logger.info(f"Successfully updated tag {tag_name} to {commit_sha}")
-                    return True
-                else:
-                    logger.error(f"Failed to create tag: {create_response.status_code}, {create_response.text}")
-                    return False
-            else:
-                logger.error(f"Failed to delete old tag: {delete_response.status_code}")
+                logger.error("Failed to delete old tag: %s", delete_response.status_code)
                 return False
-                
-    except Exception as e:
-        logger.error(f"Error updating tag: {e}")
+
+            create_response = await client.post(
+                f"{GITHUB_API_BASE}/git/refs",
+                headers=headers,
+                json={"ref": f"refs/tags/{tag_name}", "sha": commit_sha},
+                timeout=30.0,
+            )
+
+            if create_response.status_code == 201:
+                logger.info("Successfully updated tag %s to %s", tag_name, commit_sha)
+                return True
+
+            await _notify_github_auth_failure(
+                "update_tag:create",
+                create_response.status_code,
+                create_response.text,
+            )
+            logger.error(
+                "Failed to create tag: %s, %s",
+                create_response.status_code,
+                create_response.text,
+            )
+            return False
+    except Exception as exc:
+        logger.error("Error updating tag: %s", exc)
         return False
 
 
 async def publish_release_note(release_note: str) -> bool:
-    """通过NapCat API发布release note到个人签名"""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{NAPCAT_API_BASE}/set_self_longnick",
                 headers={"content-type": "application/json"},
                 json={"longNick": release_note},
-                timeout=30.0
+                timeout=30.0,
             )
-            
+
             if response.status_code == 200:
                 logger.info("Successfully published release note")
                 return True
-            else:
-                logger.error(f"Failed to publish release note: {response.status_code}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"Error publishing release note: {e}")
+
+            logger.error("Failed to publish release note: %s", response.status_code)
+            return False
+    except Exception as exc:
+        logger.error("Error publishing release note: %s", exc)
         return False
 
 
 def format_release_note(commits: list[dict], old_version: Optional[str], new_version: str) -> str:
-    """格式化release note"""
     if not commits:
         return f"版本 {new_version} 已部署，无新提交"
-    
-    # 构建release note
+
     lines = []
     if old_version:
         lines.append(f"🚀 版本更新: {old_version} → {new_version}")
     else:
         lines.append(f"🚀 版本 {new_version} 已部署")
-    
+
     lines.append("")
     lines.append("📝 更新内容:")
-    
-    # 添加commit messages
+
     for commit in commits:
-        message = commit["commit"]["message"].split("\n")[0]  # 只取第一行
+        message = commit["commit"]["message"].split("\n")[0]
         lines.append(f"  • {message}")
-    
+
     return "\n".join(lines)
 
 
-async def check_and_publish_release_note():
-    """检查版本并发布release note"""
+async def check_and_publish_release_note() -> None:
     try:
         logger.info("Starting release note check...")
-        
-        # 获取当前版本
+
         current_version = await get_current_version()
         if not current_version:
             logger.warning("Current version not available, skipping release note")
             return
-        
-        # 获取当前版本的commit SHA
+
         current_sha = await get_tag_commit_sha(current_version)
         if not current_sha:
-            logger.warning(f"Could not find commit SHA for version {current_version}")
+            logger.warning("Could not find commit SHA for version %s", current_version)
             return
-        
-        # 获取上次部署的版本
+
         last_deployed_sha = await get_tag_commit_sha(LAST_DEPLOYED_TAG)
-        
-        # 如果两个SHA相同，说明没有更新
         if last_deployed_sha and last_deployed_sha == current_sha:
             logger.info("No new commits since last deployment")
             return
-        
-        # 获取两个版本之间的commits
+
         commits = await get_commits_between(last_deployed_sha, current_sha)
-        
         if not commits and last_deployed_sha:
             logger.info("No new commits found")
             return
-        
-        # 获取旧版本号（用于显示）
+
         old_version = None
         if last_deployed_sha:
-            # 从last-deployed tag指向的commit上获取版本号tag
             version_tags = await get_version_tags_at_commit(last_deployed_sha)
             if version_tags:
-                # 优先选择看起来最像版本号的tag（通常是最后一个或包含v的）
                 old_version = version_tags[0]
-                logger.info(f"Found old version tags: {version_tags}, using: {old_version}")
+                logger.info("Found old version tags: %s, using: %s", version_tags, old_version)
             else:
                 old_version = "previous"
-        
-        # 格式化并发布release note
+
         release_note = format_release_note(commits, old_version, current_version)
-        logger.info(f"Generated release note:\n{release_note}")
-        
-        # 发布到个人签名
+        logger.info("Generated release note:\n%s", release_note)
+
         published = await publish_release_note(release_note)
-        logger.info(f"Release note published: {published}\nContent:\n{release_note}")
-        
+        logger.info("Release note published: %s\nContent:\n%s", published, release_note)
+
         if published:
-            # 更新last-deployed tag
             github_token = await get_github_token()
             if github_token:
                 await update_tag(LAST_DEPLOYED_TAG, current_sha, github_token)
             else:
                 logger.warning("GitHub token not available, cannot update last-deployed tag")
-        
+                await _send_private_alert_once(
+                    "github-token-missing",
+                    "[release-note] GitHub token missing before update_tag. "
+                    "Set GITHUB_TOKEN for tag update.",
+                )
+
         logger.info("Release note check completed")
-        
-    except Exception as e:
-        logger.error(f"Error in check_and_publish_release_note: {e}")
+    except Exception as exc:
+        logger.error("Error in check_and_publish_release_note: %s", exc)
 
 
-# Bot启动时检查
 @driver.on_startup
-async def on_startup():
-    """Bot启动时触发"""
+async def on_startup() -> None:
     logger.info("Bot started, scheduling release note check...")
-    # 延迟5秒执行，确保bot完全就绪
     from datetime import datetime, timedelta
+
     run_time = datetime.now() + timedelta(seconds=5)
-    
     scheduler.add_job(
         check_and_publish_release_note,
         "date",
         run_date=run_time,
         id="release_note_check",
         replace_existing=True,
-        misfire_grace_time=60
+        misfire_grace_time=60,
     )
 
 
-# 手动触发命令（仅超级用户）
 check_release = on_command("检查更新", permission=SUPERUSER, priority=5)
 
+
 @check_release.handle()
-async def handle_check_release():
-    """手动触发release note检查"""
+async def handle_check_release() -> None:
     await check_release.send("开始检查版本更新...")
     await check_and_publish_release_note()
     await check_release.send("版本检查完成")

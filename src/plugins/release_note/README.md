@@ -9,6 +9,7 @@
 - 获取两个版本之间的所有 commit 信息
 - 将更新日志发布到 QQ 个人签名
 - 自动更新远程仓库的 `last-deployed` tag
+- GitHub token 失效/权限异常时私聊告警 `SUPERUSERS[0]`
 
 ## 配置
 
@@ -17,6 +18,9 @@
 ```env
 # 当前版本号（通常由 CI/CD 设置）
 VERSION=v1.2.11
+
+# 超级用户（私聊告警会使用第一个）
+SUPERUSERS=["1669790626"]
 
 # GitHub Personal Access Token（需要 repo 权限）
 GITHUB_TOKEN=ghp_your_token_here
@@ -46,6 +50,12 @@ MAX_MESSAGE_LENGTH=60
 ```
 /检查更新
 ```
+
+## 异常告警
+
+- 当 GitHub API 返回 token/权限异常（典型是 401/403 + `Bad credentials` 等）时，插件会私聊 `SUPERUSERS[0]`。
+- 插件进程内对该类告警做去重，避免单次启动期间重复刷屏。
+- 该告警逻辑在 `release_note` 插件内实现，不依赖 `./deploy.sh`。
 
 ## API 端点
 

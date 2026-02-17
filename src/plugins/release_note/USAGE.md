@@ -8,6 +8,7 @@
 
 ```env
 VERSION=v1.2.11
+SUPERUSERS=["1669790626"]
 GITHUB_TOKEN=ghp_your_github_token_here
 ```
 
@@ -27,6 +28,12 @@ GITHUB_TOKEN=ghp_your_github_token_here
 2. 比较当前 VERSION 与 `last-deployed` tag
 3. 如果有新 commits，发布 release note 到 QQ 个人签名
 4. 更新远程仓库的 `last-deployed` tag
+
+### 4. GitHub token 异常私聊告警
+
+- 当 GitHub 返回 token/权限异常时（常见为 401/403），插件会私聊 `SUPERUSERS[0]`。
+- 同一次进程生命周期内，该异常只会告警一次，避免重复刷屏。
+- 告警逻辑在插件内部实现，不依赖 `deploy.sh`。
 
 ## 工作原理
 
@@ -106,6 +113,10 @@ A: 首次使用时，如果没有 `last-deployed` tag，插件会获取最近的
 ### Q: GitHub Token 权限不足？
 
 A: 确保 token 有 `repo` 权限，特别是可以创建和删除 tags。
+
+### Q: token 过期时会有 QQ 提示吗？
+
+A: 会。插件会私聊 `SUPERUSERS[0]`，并在日志中保留对应的 GitHub 响应状态。
 
 ### Q: Release note 没有发布到 QQ？
 
