@@ -45,6 +45,9 @@ __plugin_meta__ = PluginMetadata(
 
 plugin_config = get_plugin_config(Config)
 _POLL_INTERVAL_SECONDS = max(1, int(plugin_config.mc_server_checker_interval_seconds))
+_PLAYER_POLL_INTERVAL_SECONDS = max(
+    1, int(plugin_config.mc_server_checker_player_poll_interval_seconds)
+)
 
 _STATE_LOCK = asyncio.Lock()
 _POLL_LOCK = asyncio.Lock()
@@ -343,23 +346,46 @@ async def _send_group_message(group_id: int, message: str) -> None:
         logger.warning(f"Failed to send group message: {exc}")
 
 
-async def _run_check(send_changes: bool) -> None:
+def _collect_group_servers(
+    state: dict[str, Any], only_online_servers: bool
+) -> dict[int, list[str]]:
+    groups = state.get("groups", {})
+    group_servers: dict[int, list[str]] = {}
+    for group_id_str, group_data in groups.items():
+        if not isinstance(group_data, dict):
+            continue
+        servers = group_data.get("servers", {})
+        if not isinstance(servers, dict):
+            continue
+        try:
+            group_id = int(group_id_str)
+        except ValueError:
+            continue
+
+        ips: list[str] = []
+        for ip, server_state in servers.items():
+            if not isinstance(ip, str):
+                continue
+            if not only_online_servers:
+                ips.append(ip)
+                continue
+            if isinstance(server_state, dict) and server_state.get("last_status") == "online":
+                ips.append(ip)
+
+        if ips:
+            group_servers[group_id] = ips
+    return group_servers
+
+
+async def _run_check(
+    send_changes: bool,
+    include_player_changes: bool = False,
+    only_online_servers: bool = False,
+) -> None:
     async with _POLL_LOCK:
         async with _STATE_LOCK:
             state = load_state()
-            groups = state.get("groups", {})
-            group_servers: dict[int, list[str]] = {}
-            for group_id_str, group_data in groups.items():
-                if not isinstance(group_data, dict):
-                    continue
-                servers = group_data.get("servers", {})
-                if not isinstance(servers, dict):
-                    continue
-                try:
-                    group_id = int(group_id_str)
-                except ValueError:
-                    continue
-                group_servers[group_id] = list(servers.keys())
+            group_servers = _collect_group_servers(state, only_online_servers)
 
         if not group_servers:
             return
@@ -382,6 +408,10 @@ async def _run_check(send_changes: bool) -> None:
                     )
                     if change_message:
                         change_messages.setdefault(group_id, []).append(change_message)
+                    if include_player_changes and result.online:
+                        player_messages = _build_player_diff_messages(group_id, result, now)
+                        if player_messages:
+                            change_messages.setdefault(group_id, []).extend(player_messages)
             save_state(state)
 
         if send_changes:
@@ -391,21 +421,43 @@ async def _run_check(send_changes: bool) -> None:
 
 
 _JOB_ID = "mc_server_checker_poll"
+_PLAYER_JOB_ID = "mc_server_checker_player_poll"
 driver = get_driver()
 
 
 @driver.on_startup
 async def _start_polling() -> None:
     if scheduler.get_job(_JOB_ID):
+        pass
+    else:
+        scheduler.add_job(
+            _run_check,
+            "interval",
+            seconds=_POLL_INTERVAL_SECONDS,
+            id=_JOB_ID,
+            coalesce=True,
+            misfire_grace_time=30,
+            kwargs={
+                "send_changes": True,
+                "include_player_changes": False,
+                "only_online_servers": False,
+            },
+        )
+
+    if scheduler.get_job(_PLAYER_JOB_ID):
         return
     scheduler.add_job(
         _run_check,
         "interval",
-        seconds=_POLL_INTERVAL_SECONDS,
-        id=_JOB_ID,
+        seconds=_PLAYER_POLL_INTERVAL_SECONDS,
+        id=_PLAYER_JOB_ID,
         coalesce=True,
-        misfire_grace_time=30,
-        kwargs={"send_changes": True},
+        misfire_grace_time=15,
+        kwargs={
+            "send_changes": True,
+            "include_player_changes": True,
+            "only_online_servers": True,
+        },
     )
 
 
@@ -414,6 +466,9 @@ async def _stop_polling() -> None:
     job = scheduler.get_job(_JOB_ID)
     if job:
         job.remove()
+    player_job = scheduler.get_job(_PLAYER_JOB_ID)
+    if player_job:
+        player_job.remove()
 
 
 command_rule = is_type(GroupMessageEvent) & to_me()
@@ -495,8 +550,6 @@ async def handle_status(event: GroupMessageEvent) -> None:
             change_message = _apply_status_update(group_id, server_state, result, now)
             if change_message:
                 change_messages.append(change_message)
-            player_messages = _build_player_diff_messages(group_id, result, now)
-            change_messages.extend(player_messages)
             if result.online:
                 blocks.append(_format_online_result(result, server_state, now))
             else:

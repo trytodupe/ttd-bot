@@ -102,3 +102,34 @@ def test_player_diff_messages_with_partial_sample(mc_server_checker_module):
     )
     join_messages = module._build_player_diff_messages(group_id, rejoin, now=1900.0)
     assert join_messages == ["[+] Bob b.example:25565 | offline for: 5m"]
+
+
+def test_collect_group_servers_only_online(mc_server_checker_module):
+    module = mc_server_checker_module
+    state = {
+        "groups": {
+            "100": {
+                "servers": {
+                    "a.example:25565": {"last_status": "online"},
+                    "b.example:25565": {"last_status": "offline"},
+                }
+            },
+            "200": {
+                "servers": {
+                    "c.example:25565": {"last_status": "online"},
+                }
+            },
+        }
+    }
+
+    all_servers = module._collect_group_servers(state, only_online_servers=False)
+    assert all_servers == {
+        100: ["a.example:25565", "b.example:25565"],
+        200: ["c.example:25565"],
+    }
+
+    online_only = module._collect_group_servers(state, only_online_servers=True)
+    assert online_only == {
+        100: ["a.example:25565"],
+        200: ["c.example:25565"],
+    }
