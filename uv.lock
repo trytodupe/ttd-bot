@@ -1218,15 +1218,11 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-add-friends"
 version = "0.1.5"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-add-friends?rev=46fe28f0676ec63b94fd7142bd596af1db3f5ccb#46fe28f0676ec63b94fd7142bd596af1db3f5ccb" }
 dependencies = [
     { name = "nonebot-adapter-onebot" },
     { name = "nonebot-plugin-localstore" },
     { name = "nonebot2" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/ed/4c574a32e5049dfd7326681d7a1ecc5f0f8313e3a933001e03bc7cf3fe83/nonebot_plugin_add_friends-0.1.5.tar.gz", hash = "sha256:69be83dd649da0f2ad48bf765b883a22c569f7e56414df337435485abd739176", size = 6327, upload-time = "2025-03-14T03:51:46.519Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0d/6e/c3e0c87208c36fdc1d72392be89f079fdf5211e0324df6360f4dadcc27a4/nonebot_plugin_add_friends-0.1.5-py3-none-any.whl", hash = "sha256:598ac1095bad288a4895d67707be7cdae0ed411883ade8a8258e1625f7104a5e", size = 7886, upload-time = "2025-03-14T03:51:45.448Z" },
 ]
 
 [[package]]
@@ -2358,7 +2354,7 @@ requires-dist = [
     { name = "mcstatus", specifier = ">=11.1.0" },
     { name = "nb-cli", specifier = ">=1.4.2" },
     { name = "nonebot-adapter-onebot", specifier = ">=2.4.6" },
-    { name = "nonebot-plugin-add-friends", specifier = ">=0.1.5" },
+    { name = "nonebot-plugin-add-friends", git = "https://github.com/trytodupe/nonebot-plugin-add-friends?rev=46fe28f0676ec63b94fd7142bd596af1db3f5ccb" },
     { name = "nonebot-plugin-analysis-bilibili", specifier = ">=2.8.1" },
     { name = "nonebot-plugin-apscheduler", specifier = ">=0.5.0" },
     { name = "nonebot-plugin-authrespond", specifier = ">=1.8" },
