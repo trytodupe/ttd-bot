@@ -4,6 +4,7 @@ from pathlib import Path
 
 import nonebot
 import pytest
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 
 @pytest.fixture(scope="module")
@@ -30,16 +31,17 @@ def easy_trigger_module():
 
 
 @pytest.mark.parametrize(
-    ("plain_text", "expected"),
+    ("message", "expected"),
     [
-        ("", True),
-        ("   ", True),
-        ("ping", False),
-        (" ping ", False),
+        (Message(""), True),
+        (Message("   "), True),
+        (Message([MessageSegment.at(12345), MessageSegment.text(" ")]), True),
+        (Message("ping"), False),
+        (Message([MessageSegment.image("https://example.com/image.jpg")]), False),
     ],
 )
-def test_is_simple_ping(easy_trigger_module, plain_text, expected):
-    assert easy_trigger_module._is_simple_ping(plain_text) is expected
+def test_is_simple_ping(easy_trigger_module, message, expected):
+    assert easy_trigger_module._is_simple_ping(message) is expected
 
 
 @pytest.mark.asyncio
@@ -52,8 +54,7 @@ async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module
     monkeypatch.setattr(easy_trigger_module.superuser_ping_handler, "finish", fake_finish)
 
     class DummyEvent:
-        def get_plaintext(self) -> str:
-            return "   "
+        message = Message("   ")
 
     await easy_trigger_module.handle_superuser_ping(DummyEvent())
 
@@ -71,8 +72,7 @@ async def test_handle_superuser_ping_ignores_meaningful_text(easy_trigger_module
     monkeypatch.setattr(easy_trigger_module.superuser_ping_handler, "finish", fake_finish)
 
     class DummyEvent:
-        def get_plaintext(self) -> str:
-            return "status"
+        message = Message([MessageSegment.image("https://example.com/image.jpg")])
 
     await easy_trigger_module.handle_superuser_ping(DummyEvent())
 
