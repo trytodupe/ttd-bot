@@ -19,4 +19,5 @@ services:
       - ./.env:/app/.env:ro
       - ./clovers.toml:/app/clovers.toml:ro
       - ./fonts:/usr/share/fonts
+      - ../shared:/shared # share files between dockers
     restart: always

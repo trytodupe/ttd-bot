@@ -30,7 +30,7 @@ jobs:
           CURRENT_COMMIT="${GITHUB_SHA}"
 
           if [ -n "$LAST_DEPLOY_REF" ] && git rev-parse --verify --quiet "$LAST_DEPLOY_REF^{commit}" >/dev/null; then
-            if git diff --quiet "$LAST_DEPLOY_REF..$CURRENT_COMMIT" -- uv.lock pyproject.toml Dockerfile; then
+            if git diff --quiet "$LAST_DEPLOY_REF..$CURRENT_COMMIT" -- uv.lock pyproject.toml Dockerfile docker-compose.yml; then
               DEPS_CHANGED=false
             fi
           fi
