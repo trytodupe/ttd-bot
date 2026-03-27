@@ -4,7 +4,6 @@ import logging
 import os
 from typing import Any, Optional
 
-import httpx
 from nonebot import get_bots, get_driver, on_command, require
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -23,7 +22,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 GITHUB_API_BASE = f"https://api.github.com/repos/{plugin_config.github_repo_owner}/{plugin_config.github_repo_name}"
-NAPCAT_API_BASE = plugin_config.napcat_api_base
 LAST_DEPLOYED_TAG = plugin_config.last_deployed_tag
 
 GITHUB_AUTH_FAILURE_HINTS = (
@@ -110,6 +108,13 @@ async def _send_private_alert_once(key: str, message: str) -> bool:
     return await _send_private_alert(message)
 
 
+def _select_bot():
+    bots = get_bots()
+    if not bots:
+        return None
+    return next(iter(bots.values()))
+
+
 def _is_github_auth_failure(status_code: int, body_text: str) -> bool:
     if status_code not in (401, 403):
         return False
@@ -144,6 +149,8 @@ async def get_current_version() -> Optional[str]:
 
 
 async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
+    import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
@@ -198,6 +205,8 @@ async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
 
 
 async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[dict]:
+    import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
@@ -240,6 +249,8 @@ async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[di
 
 
 async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
+    import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             headers = {"Accept": "application/vnd.github.v3+json"}
@@ -280,6 +291,8 @@ async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
 
 
 async def update_tag(tag_name: str, commit_sha: str, token: str) -> bool:
+    import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             headers = {
@@ -329,22 +342,35 @@ async def update_tag(tag_name: str, commit_sha: str, token: str) -> bool:
         return False
 
 
+def _is_call_api_success(result: Any) -> bool:
+    if result is None:
+        return True
+    if not isinstance(result, dict):
+        return True
+
+    status = str(result.get("status", "")).strip().lower()
+    retcode = result.get("retcode")
+    if status == "failed":
+        return False
+    if retcode is not None and retcode != 0:
+        return False
+    return True
+
+
 async def publish_release_note(release_note: str) -> bool:
+    bot = _select_bot()
+    if bot is None:
+        logger.error("No available bot to publish release note")
+        return False
+
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{NAPCAT_API_BASE}/set_self_longnick",
-                headers={"content-type": "application/json"},
-                json={"longNick": release_note},
-                timeout=30.0,
-            )
+        result = await bot.call_api("set_self_longnick", longNick=release_note)
+        if _is_call_api_success(result):
+            logger.info("Successfully published release note")
+            return True
 
-            if response.status_code == 200:
-                logger.info("Successfully published release note")
-                return True
-
-            logger.error("Failed to publish release note: %s", response.status_code)
-            return False
+        logger.error("Failed to publish release note via call_api: %s", result)
+        return False
     except Exception as exc:
         logger.error("Error publishing release note: %s", exc)
         return False
@@ -409,17 +435,16 @@ async def check_and_publish_release_note() -> None:
         published = await publish_release_note(release_note)
         logger.info("Release note published: %s\nContent:\n%s", published, release_note)
 
-        if published:
-            github_token = await get_github_token()
-            if github_token:
-                await update_tag(LAST_DEPLOYED_TAG, current_sha, github_token)
-            else:
-                logger.warning("GitHub token not available, cannot update last-deployed tag")
-                await _send_private_alert_once(
-                    "github-token-missing",
-                    "[release-note] GitHub token missing before update_tag. "
-                    "Set GITHUB_TOKEN for tag update.",
-                )
+        github_token = await get_github_token()
+        if github_token:
+            await update_tag(LAST_DEPLOYED_TAG, current_sha, github_token)
+        else:
+            logger.warning("GitHub token not available, cannot update last-deployed tag")
+            await _send_private_alert_once(
+                "github-token-missing",
+                "[release-note] GitHub token missing before update_tag. "
+                "Set GITHUB_TOKEN for tag update.",
+            )
 
         logger.info("Release note check completed")
     except Exception as exc:

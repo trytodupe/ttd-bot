@@ -141,3 +141,80 @@ async def test_send_private_alert_once_without_bot(release_note_module, monkeypa
     result = await release_note_module._send_private_alert_once("github-auth-invalid", "test")
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_publish_release_note_uses_call_api(release_note_module, monkeypatch):
+    fake_bot = FakeBot()
+    monkeypatch.setattr(release_note_module, "get_bots", lambda: {"bot": fake_bot})
+
+    result = await release_note_module.publish_release_note("hello")
+
+    assert result is True
+    assert fake_bot.calls == [("set_self_longnick", {"longNick": "hello"})]
+
+
+@pytest.mark.asyncio
+async def test_publish_release_note_treats_failed_retcode_as_failure(
+    release_note_module, monkeypatch
+):
+    class FailedBot(FakeBot):
+        async def call_api(self, api: str, **kwargs):
+            self.calls.append((api, kwargs))
+            return {"status": "failed", "retcode": 403, "message": "Forbidden"}
+
+    fake_bot = FailedBot()
+    monkeypatch.setattr(release_note_module, "get_bots", lambda: {"bot": fake_bot})
+
+    result = await release_note_module.publish_release_note("hello")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_check_and_publish_release_note_updates_tag_even_if_publish_fails(
+    release_note_module, monkeypatch
+):
+    update_calls = []
+
+    async def fake_get_current_version():
+        return "v1.3.11"
+
+    async def fake_get_tag_commit_sha(tag_name: str):
+        if tag_name == "v1.3.11":
+            return "current-sha"
+        if tag_name == release_note_module.LAST_DEPLOYED_TAG:
+            return "last-sha"
+        return None
+
+    async def fake_get_commits_between(base_sha, head_sha):
+        return [{"commit": {"message": "feat: example"}}]
+
+    async def fake_get_version_tags_at_commit(commit_sha: str):
+        return ["v1.3.10"]
+
+    async def fake_publish_release_note(_release_note: str):
+        return False
+
+    async def fake_get_github_token():
+        return "token"
+
+    async def fake_update_tag(tag_name: str, commit_sha: str, token: str):
+        update_calls.append((tag_name, commit_sha, token))
+        return True
+
+    monkeypatch.setattr(release_note_module, "get_current_version", fake_get_current_version)
+    monkeypatch.setattr(release_note_module, "get_tag_commit_sha", fake_get_tag_commit_sha)
+    monkeypatch.setattr(release_note_module, "get_commits_between", fake_get_commits_between)
+    monkeypatch.setattr(
+        release_note_module,
+        "get_version_tags_at_commit",
+        fake_get_version_tags_at_commit,
+    )
+    monkeypatch.setattr(release_note_module, "publish_release_note", fake_publish_release_note)
+    monkeypatch.setattr(release_note_module, "get_github_token", fake_get_github_token)
+    monkeypatch.setattr(release_note_module, "update_tag", fake_update_tag)
+
+    await release_note_module.check_and_publish_release_note()
+
+    assert update_calls == [("last-deployed", "current-sha", "token")]
