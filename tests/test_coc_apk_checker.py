@@ -1,6 +1,7 @@
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import nonebot
 import pytest
@@ -106,6 +107,47 @@ def test_extract_upload_error(coc_apk_checker_module):
         == "ENOENT: no such file or directory"
     )
     assert module._extract_upload_error({"status": "ok", "retcode": 0}) == ""
+
+
+def test_resolve_primary_superuser_prefers_env_order(coc_apk_checker_module, monkeypatch):
+    module = coc_apk_checker_module
+
+    monkeypatch.setenv("SUPERUSERS", '["1669790626", "1777777777"]')
+    monkeypatch.setattr(
+        module,
+        "driver",
+        SimpleNamespace(config=SimpleNamespace(superusers={"9999999999"})),
+    )
+
+    assert module._resolve_primary_superuser() == 1669790626
+
+
+def test_build_http_client_uses_configured_proxy(coc_apk_checker_module, monkeypatch):
+    module = coc_apk_checker_module
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(
+        module.plugin_config,
+        "coc_checker_timeout_seconds",
+        120,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module.plugin_config,
+        "coc_checker_proxy",
+        "http://127.0.0.1:7890",
+        raising=False,
+    )
+
+    module._build_http_client()
+
+    assert captured["proxy"] == "http://127.0.0.1:7890"
+    assert captured["trust_env"] is True
 
 
 @pytest.mark.asyncio
@@ -288,3 +330,46 @@ async def test_check_coc_apk_update_reports_upload_failure(
             "[CoC APK] Upload failed: ENOENT: no such file or directory, open '/shared/missing.apk'",
         ),
     ]
+
+
+class FakeBot:
+    def __init__(self):
+        self.calls = []
+
+    async def call_api(self, api: str, **kwargs):
+        self.calls.append((api, kwargs))
+        return {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    fake_bot = FakeBot()
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    module._ALERT_KEYS_SENT.clear()
+
+    monkeypatch.setattr(module, "_should_enable_checker", lambda: True)
+    monkeypatch.setattr(module, "_shared_dir", lambda: shared_dir)
+    monkeypatch.setenv("SUPERUSERS", '["1669790626"]')
+    monkeypatch.setattr(
+        module,
+        "driver",
+        SimpleNamespace(config=SimpleNamespace(superusers=set())),
+    )
+    monkeypatch.setattr(module, "get_bots", lambda: {"bot": fake_bot})
+
+    async def fake_fetch_latest_version(_client):
+        raise module.httpx.ConnectError("proxy connect failed")
+
+    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
+
+    await module.check_coc_apk_update()
+
+    assert len(fake_bot.calls) == 1
+    api, payload = fake_bot.calls[0]
+    assert api == "send_private_msg"
+    assert payload["user_id"] == 1669790626
+    assert "Scheduled check failed: ConnectError: proxy connect failed" in payload["message"]

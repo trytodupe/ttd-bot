@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -66,6 +67,7 @@ _APK_MIME = "application/vnd.android.package-archive"
 _FILENAME_RE = re.compile(r'^Clash of Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
+_ALERT_KEYS_SENT: set[str] = set()
 
 driver = get_driver()
 
@@ -94,6 +96,81 @@ class DownloadedApk:
 class UploadResult:
     ok: bool
     detail: str
+
+
+def _parse_superusers(value: str) -> list[str]:
+    raw = value.strip()
+    if not raw:
+        return []
+
+    parsed: Any = None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        try:
+            parsed = ast.literal_eval(raw)
+        except Exception:
+            parsed = None
+
+    if isinstance(parsed, (list, tuple, set)):
+        return [str(item).strip().strip('"\'') for item in parsed if str(item).strip()]
+
+    if isinstance(parsed, str) and parsed.strip():
+        return [parsed.strip().strip('"\'')]
+
+    return [item.strip().strip('"\'') for item in raw.replace(",", " ").split() if item.strip()]
+
+
+def _resolve_primary_superuser() -> int | None:
+    env_value = os.getenv("SUPERUSERS", "")
+    candidates = _parse_superusers(env_value)
+
+    if not candidates:
+        fallback_superusers = getattr(driver.config, "superusers", set())
+        if fallback_superusers:
+            normalized = [str(item).strip() for item in fallback_superusers if str(item).strip()]
+            candidates = sorted(
+                normalized,
+                key=lambda item: (not item.isdigit(), int(item) if item.isdigit() else item),
+            )
+
+    for candidate in candidates:
+        if candidate.isdigit():
+            return int(candidate)
+
+    logger.warning("No valid superuser found for CoC checker alert")
+    return None
+
+
+async def _send_private_alert(message: str) -> bool:
+    target_user_id = _resolve_primary_superuser()
+    if target_user_id is None:
+        return False
+
+    bot = _select_bot()
+    if bot is None:
+        logger.warning("No available bot to send CoC checker alert")
+        return False
+
+    try:
+        await bot.call_api("send_private_msg", user_id=target_user_id, message=message)
+        logger.info("Sent CoC checker alert to superuser %s", target_user_id)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send CoC checker alert: %s", exc)
+        return False
+
+
+async def _send_private_alert_once(key: str, message: str) -> bool:
+    if key in _ALERT_KEYS_SENT:
+        return False
+
+    _ALERT_KEYS_SENT.add(key)
+    return await _send_private_alert(message)
+
+
+def _clear_alert(key: str) -> None:
+    _ALERT_KEYS_SENT.discard(key)
 
 
 def _is_running_in_docker() -> bool:
@@ -203,6 +280,17 @@ def _is_valid_apk_response(response: httpx.Response) -> bool:
     return response.status_code == 200 and _APK_MIME in content_type
 
 
+def _build_http_client() -> httpx.AsyncClient:
+    timeout = max(10, int(plugin_config.coc_checker_timeout_seconds))
+    proxy = str(plugin_config.coc_checker_proxy).strip() or None
+    return httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(timeout, connect=30.0),
+        proxy=proxy,
+        trust_env=True,
+    )
+
+
 async def _fetch_latest_version(client: httpx.AsyncClient) -> CocVersion | None:
     response = await client.get(_HISTORY_URL, headers=_HISTORY_HEADERS)
     response.raise_for_status()
@@ -309,57 +397,61 @@ async def check_coc_apk_update() -> None:
         return
 
     async with _CHECK_LOCK:
-        timeout = max(10, int(plugin_config.coc_checker_timeout_seconds))
         shared_dir = _shared_dir()
         shared_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            async with _build_http_client() as client:
+                latest_version = await _fetch_latest_version(client)
+                if latest_version is None:
+                    logger.warning("CoC checker did not find any APK versions")
+                    return
 
-        async with httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=httpx.Timeout(timeout, connect=30.0),
-        ) as client:
-            latest_version = await _fetch_latest_version(client)
-            if latest_version is None:
-                logger.warning("CoC checker did not find any APK versions")
-                return
+                local_version_name = _latest_local_version_name(shared_dir)
+                if _has_local_version_name(shared_dir, latest_version.version_name):
+                    logger.debug("CoC APK already up to date: %s", local_version_name)
+                    _clear_alert("coc-checker-check-failed")
+                    return
 
-            local_version_name = _latest_local_version_name(shared_dir)
-            if _has_local_version_name(shared_dir, latest_version.version_name):
-                logger.debug("CoC APK already up to date: %s", local_version_name)
-                return
-
-            logger.info(
-                "Detected new CoC APK version: %s (local=%s)",
-                latest_version.version_name,
-                local_version_name or "none",
-            )
-            await _send_group_message(
-                int(plugin_config.coc_checker_group_id),
-                _format_version_message(latest_version),
-            )
-
-            try:
-                downloaded_apk = await _download_latest_apk(client, shared_dir)
-            except Exception as exc:
-                logger.warning("Failed to download CoC APK: %s", exc)
-                await _announce_upload_failure(
-                    int(plugin_config.coc_checker_group_id),
-                    f"download error: {type(exc).__name__}: {exc}",
+                logger.info(
+                    "Detected new CoC APK version: %s (local=%s)",
+                    latest_version.version_name,
+                    local_version_name or "none",
                 )
+                await _send_group_message(
+                    int(plugin_config.coc_checker_group_id),
+                    _format_version_message(latest_version),
+                )
+
+                try:
+                    downloaded_apk = await _download_latest_apk(client, shared_dir)
+                except Exception as exc:
+                    logger.warning("Failed to download CoC APK: %s", exc)
+                    await _announce_upload_failure(
+                        int(plugin_config.coc_checker_group_id),
+                        f"download error: {type(exc).__name__}: {exc}",
+                    )
+                    return
+
+            upload_result = await _upload_group_file(
+                int(plugin_config.coc_checker_group_id),
+                downloaded_apk,
+            )
+            if upload_result.ok:
+                _clear_alert("coc-checker-check-failed")
+                logger.info("Uploaded CoC APK successfully: %s", downloaded_apk.filename)
                 return
 
-        upload_result = await _upload_group_file(
-            int(plugin_config.coc_checker_group_id),
-            downloaded_apk,
-        )
-        if upload_result.ok:
-            logger.info("Uploaded CoC APK successfully: %s", downloaded_apk.filename)
-            return
-
-        logger.warning("Failed to upload CoC APK: %s", upload_result.detail)
-        await _announce_upload_failure(
-            int(plugin_config.coc_checker_group_id),
-            upload_result.detail,
-        )
+            logger.warning("Failed to upload CoC APK: %s", upload_result.detail)
+            await _announce_upload_failure(
+                int(plugin_config.coc_checker_group_id),
+                upload_result.detail,
+            )
+        except Exception as exc:
+            logger.exception("CoC APK check failed: %s", exc)
+            await _send_private_alert_once(
+                "coc-checker-check-failed",
+                f"[coc-apk-checker] Scheduled check failed: {type(exc).__name__}: {exc}",
+            )
 
 
 @driver.on_startup
