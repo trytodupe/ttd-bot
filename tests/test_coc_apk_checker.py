@@ -107,6 +107,13 @@ def test_extract_upload_error(coc_apk_checker_module):
         == "ENOENT: no such file or directory"
     )
     assert module._extract_upload_error({"status": "ok", "retcode": 0}) == ""
+    assert module._extract_upload_error({"file_id": "/10584a2b-9b86-4777-aefa-19655cfee558"}) == ""
+    assert (
+        module._extract_upload_error(
+            {"data": {"file_id": "/78458762-7bf5-4eed-9e2c-30e223e108c9"}}
+        )
+        == ""
+    )
 
 
 def test_resolve_primary_superuser_prefers_env_order(coc_apk_checker_module, monkeypatch):

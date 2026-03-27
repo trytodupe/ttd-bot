@@ -355,6 +355,13 @@ def _format_version_message(version: CocVersion) -> str:
 
 def _extract_upload_error(result: Any) -> str:
     if isinstance(result, dict):
+        if str(result.get("file_id", "")).strip():
+            return ""
+
+        nested_data = result.get("data")
+        if isinstance(nested_data, dict) and str(nested_data.get("file_id", "")).strip():
+            return ""
+
         status = str(result.get("status", "")).strip()
         retcode = result.get("retcode")
         if status == "ok" and retcode == 0:
