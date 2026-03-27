@@ -21,8 +21,12 @@ def mc_server_checker_module():
     except ValueError:
         pass
 
-    nonebot.load_plugin("nonebot_plugin_localstore")
-    nonebot.load_plugin("nonebot_plugin_apscheduler")
+    for plugin_name in ("nonebot_plugin_localstore", "nonebot_plugin_apscheduler"):
+        try:
+            nonebot.load_plugin(plugin_name)
+        except RuntimeError as exc:
+            if "Plugin already exists" not in str(exc):
+                raise
 
     plugin_dir = Path(__file__).resolve().parents[1] / "src" / "plugins"
     plugin_dir_text = str(plugin_dir)
