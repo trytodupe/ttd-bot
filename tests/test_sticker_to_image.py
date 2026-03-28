@@ -154,6 +154,7 @@ async def test_handle_sticker_replies_with_reply_url_text(sticker_to_image_modul
     monkeypatch.setattr(module.matcher, "finish", fake_finish)
 
     event = SimpleNamespace(
+        message_type="group",
         to_me=True,
         message=Message([MessageSegment.at(12345), MessageSegment.text(" url ")]),
         reply=SimpleNamespace(
@@ -164,3 +165,26 @@ async def test_handle_sticker_replies_with_reply_url_text(sticker_to_image_modul
     await module.handle_sticker(event)
 
     assert captured == {"message": "https://example.com/replied.jpg"}
+
+
+@pytest.mark.asyncio
+async def test_handle_sticker_ignores_non_matching_event(sticker_to_image_module, monkeypatch):
+    module = sticker_to_image_module
+    called = False
+
+    async def fake_finish(message=None, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(module.matcher, "finish", fake_finish)
+
+    event = SimpleNamespace(
+        message_type="group",
+        to_me=False,
+        message=Message([_image_segment(sub_type="1", url="https://example.com/sticker.jpg")]),
+        reply=None,
+    )
+
+    await module.handle_sticker(event)
+
+    assert called is False

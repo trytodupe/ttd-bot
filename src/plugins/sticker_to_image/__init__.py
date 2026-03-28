@@ -3,7 +3,6 @@ from __future__ import annotations
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
 
 __plugin_meta__ = PluginMetadata(
     name="sticker-to-image",
@@ -69,11 +68,14 @@ def _build_image_reply(source: str) -> MessageSegment:
     return MessageSegment.image(source)
 
 
-matcher = on_message(rule=Rule(_should_handle_event), priority=50, block=False)
+matcher = on_message(priority=50, block=False)
 
 
 @matcher.handle()
 async def handle_sticker(event: MessageEvent) -> None:
+    if not _should_handle_event(event):
+        return
+
     source = _extract_sticker_source(event.message)
     if source:
         return await matcher.finish(_build_image_reply(source))
