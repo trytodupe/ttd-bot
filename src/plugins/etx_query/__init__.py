@@ -21,6 +21,7 @@ _DUEL_RATING_URL_TEMPLATE = (
     "https://www.eliteronix.de/elitebotix/api/player-duelrating?u={user_id}"
 )
 _USERNAME_PATTERN = re.compile(r"^etx\s+(.+?)\s*$", re.IGNORECASE)
+_VALID_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9 _\-\[\]]+$")
 _USER_ID_PATTERN = re.compile(r"/users/(?P<user_id>\d+)(?:[/?#]|$)")
 
 matcher = on_message(priority=20, block=True)
@@ -32,7 +33,11 @@ def _extract_username(plain_text: str) -> str | None:
     if not match:
         return None
     username = match.group(1).strip()
-    return username or None
+    if not username:
+        return None
+    if not _VALID_USERNAME_PATTERN.fullmatch(username):
+        return None
+    return username
 
 
 def _extract_user_id_from_location(location: str | None) -> str | None:

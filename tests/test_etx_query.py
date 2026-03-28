@@ -41,9 +41,12 @@ def test_extract_username(etx_query_module):
 
     assert module._extract_username("etx trytodupe") == "trytodupe"
     assert module._extract_username("ETX The Kush Van Man") == "The Kush Van Man"
+    assert module._extract_username("etx user_name-[x]") == "user_name-[x]"
     assert module._extract_username(" etx   Toy ") == "Toy"
     assert module._extract_username("/etx Toy") is None
     assert module._extract_username("etx") is None
+    assert module._extract_username("etx bad/name") is None
+    assert module._extract_username("etx bad@name") is None
 
 
 def test_extract_user_id_from_location(etx_query_module):
