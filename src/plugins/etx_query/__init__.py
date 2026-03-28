@@ -56,31 +56,50 @@ def _parse_rating(value: str | None) -> str:
         return "N/A"
 
 
-def _format_updated_at(updated_at: str | None, outdated: bool) -> str:
+def _format_relative_age(updated_at_local: datetime, now: datetime | None = None) -> str:
+    reference_now = now or datetime.now(_LOCAL_TZ)
+    delta_seconds = max(0, int((reference_now - updated_at_local).total_seconds()))
+
+    if delta_seconds < 60:
+        return "~1m"
+    if delta_seconds < 3600:
+        return f"~{delta_seconds // 60}m"
+    if delta_seconds < 86400:
+        return f"~{delta_seconds // 3600}h"
+
+    delta_days = delta_seconds // 86400
+    if delta_days < 30:
+        return f"~{delta_days}d"
+    return f"~{max(1, delta_days // 30)}mo"
+
+
+def _format_updated_at(updated_at: str | None, now: datetime | None = None) -> str:
     if not updated_at:
-        suffix = " (OUTDATED)" if outdated else ""
-        return f"updated at unknown{suffix}"
+        return "updated at unknown"
 
     normalized = updated_at.replace("Z", "+00:00")
     dt = datetime.fromisoformat(normalized)
     local_dt = dt.astimezone(_LOCAL_TZ)
     formatted = local_dt.strftime("%Y-%m-%d %H:%M:%S")
-    suffix = " (OUTDATED)" if outdated else ""
-    return f"updated at {formatted}{suffix}"
+    return f"updated at {formatted} ({_format_relative_age(local_dt, now=now)})"
 
 
-def _format_duel_rating_message(username: str, payload: dict) -> str:
+def _format_duel_rating_message(
+    username: str,
+    payload: dict,
+    now: datetime | None = None,
+) -> str:
     user_id = str(payload.get("osuUserId", "")).strip() or "unknown"
     duel_rating = payload.get("duelRating") or {}
-    outdated = bool(duel_rating.get("osuDuelOutdated", False))
     lines = [
         f"{username} / {user_id}:",
+        f"SR: {_parse_rating(duel_rating.get('osuDuelStarRating'))}",
         f"NM: {_parse_rating(duel_rating.get('osuNoModDuelStarRating'))}",
         f"HD: {_parse_rating(duel_rating.get('osuHiddenDuelStarRating'))}",
         f"HR: {_parse_rating(duel_rating.get('osuHardRockDuelStarRating'))}",
         f"DT: {_parse_rating(duel_rating.get('osuDoubleTimeDuelStarRating'))}",
         f"FM: {_parse_rating(duel_rating.get('osuFreeModDuelStarRating'))}",
-        _format_updated_at(duel_rating.get("updatedAt"), outdated),
+        _format_updated_at(duel_rating.get("updatedAt"), now=now),
     ]
     return "\n".join(lines)
 

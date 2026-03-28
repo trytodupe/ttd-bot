@@ -1,7 +1,9 @@
 import importlib
 import sys
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import nonebot
 import pytest
@@ -59,30 +61,73 @@ def test_extract_user_id_from_location(etx_query_module):
 
 def test_format_duel_rating_message(etx_query_module):
     module = etx_query_module
+    now = datetime(2026, 3, 28, 20, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
 
     payload = {
         "osuUserId": "15416101",
         "duelRating": {
+            "osuDuelStarRating": "5.1643987573369",
             "osuNoModDuelStarRating": "4.97233790756486",
             "osuHiddenDuelStarRating": "5.41597135939341",
             "osuHardRockDuelStarRating": "4.59178657368894",
             "osuDoubleTimeDuelStarRating": "5.43107259066218",
             "osuFreeModDuelStarRating": "5.36273102733878",
-            "osuDuelOutdated": True,
             "updatedAt": "2026-03-27T11:51:37.360Z",
         },
     }
 
-    message = module._format_duel_rating_message("trytodupe", payload)
+    message = module._format_duel_rating_message("trytodupe", payload, now=now)
 
     assert message == (
         "trytodupe / 15416101:\n"
+        "SR: 5.164\n"
         "NM: 4.972\n"
         "HD: 5.416\n"
         "HR: 4.592\n"
         "DT: 5.431\n"
         "FM: 5.363\n"
-        "updated at 2026-03-27 19:51:37 (OUTDATED)"
+        "updated at 2026-03-27 19:51:37 (~1d)"
+    )
+
+
+def test_format_relative_age(etx_query_module):
+    module = etx_query_module
+    now = datetime(2026, 3, 28, 20, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    assert (
+        module._format_relative_age(
+            datetime(2026, 3, 28, 19, 59, 50, tzinfo=ZoneInfo("Asia/Shanghai")),
+            now=now,
+        )
+        == "~1m"
+    )
+    assert (
+        module._format_relative_age(
+            datetime(2026, 3, 28, 19, 28, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            now=now,
+        )
+        == "~32m"
+    )
+    assert (
+        module._format_relative_age(
+            datetime(2026, 3, 28, 17, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            now=now,
+        )
+        == "~3h"
+    )
+    assert (
+        module._format_relative_age(
+            datetime(2026, 3, 27, 18, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            now=now,
+        )
+        == "~1d"
+    )
+    assert (
+        module._format_relative_age(
+            datetime(2026, 1, 20, 20, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            now=now,
+        )
+        == "~2mo"
     )
 
 
@@ -110,12 +155,12 @@ async def test_handle_etx_query_success(etx_query_module, monkeypatch):
         return {
             "osuUserId": "15416101",
             "duelRating": {
+                "osuDuelStarRating": "5.1643987573369",
                 "osuNoModDuelStarRating": "4.97233790756486",
                 "osuHiddenDuelStarRating": "5.41597135939341",
                 "osuHardRockDuelStarRating": "4.59178657368894",
                 "osuDoubleTimeDuelStarRating": "5.43107259066218",
                 "osuFreeModDuelStarRating": "5.36273102733878",
-                "osuDuelOutdated": False,
                 "updatedAt": "2026-03-27T11:51:37.360Z",
             },
         }
@@ -129,6 +174,7 @@ async def test_handle_etx_query_success(etx_query_module, monkeypatch):
     await module.handle_etx_query(event)
 
     assert captured["message"].startswith("trytodupe / 15416101:\n")
+    assert "SR: 5.164" in captured["message"]
     assert "DT: 5.431" in captured["message"]
 
 
