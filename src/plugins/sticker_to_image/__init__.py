@@ -38,6 +38,33 @@ def _extract_sticker_source(message: Message) -> str | None:
     return None
 
 
+def _extract_control_text(message: Message) -> str:
+    text_parts: list[str] = []
+    for segment in message:
+        if getattr(segment, "type", None) != "text":
+            continue
+        text_parts.append(str(getattr(segment, "data", {}).get("text", "")))
+    return "".join(text_parts).strip().lower()
+
+
+def _extract_reply_sticker_source(event: MessageEvent) -> str | None:
+    if not bool(getattr(event, "to_me", False)):
+        return None
+
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return None
+
+    control_text = _extract_control_text(event.message)
+    if control_text not in {"", "url"}:
+        return None
+
+    reply_message = getattr(reply, "message", None)
+    if not isinstance(reply_message, Message):
+        return None
+    return _extract_sticker_source(reply_message)
+
+
 def _build_image_reply(source: str) -> MessageSegment:
     return MessageSegment.image(source)
 
@@ -48,7 +75,14 @@ matcher = on_message(rule=Rule(_should_handle_event), priority=50, block=False)
 @matcher.handle()
 async def handle_sticker(event: MessageEvent) -> None:
     source = _extract_sticker_source(event.message)
-    if not source:
+    if source:
+        return await matcher.finish(_build_image_reply(source))
+
+    reply_source = _extract_reply_sticker_source(event)
+    if not reply_source:
         return
 
-    await matcher.finish(_build_image_reply(source))
+    if _extract_control_text(event.message) == "url":
+        return await matcher.finish(reply_source)
+
+    return await matcher.finish(_build_image_reply(reply_source))
