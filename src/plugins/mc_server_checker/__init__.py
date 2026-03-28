@@ -48,6 +48,7 @@ _POLL_INTERVAL_SECONDS = max(1, int(plugin_config.mc_server_checker_interval_sec
 _PLAYER_POLL_INTERVAL_SECONDS = max(
     1, int(plugin_config.mc_server_checker_player_poll_interval_seconds)
 )
+_OFFLINE_FAILURE_THRESHOLD = 5
 
 _STATE_LOCK = asyncio.Lock()
 _POLL_LOCK = asyncio.Lock()
@@ -307,8 +308,10 @@ def _apply_status_update(
     now: float,
 ) -> str | None:
     prev_status = server_state.get("last_status", "unknown")
+    consecutive_failures = int(server_state.get("consecutive_failures", 0) or 0)
     change_message: str | None = None
     if result.online:
+        server_state["consecutive_failures"] = 0
         if prev_status != "online":
             server_state["online_since"] = now
             change_message = _format_change_message(result, server_state, now)
@@ -318,12 +321,17 @@ def _apply_status_update(
         server_state["last_seen_online_at"] = now
         server_state["last_error"] = None
     else:
+        next_failures = consecutive_failures + 1
+        server_state["consecutive_failures"] = next_failures
+        server_state["last_error"] = result.error
+        if prev_status == "online" and next_failures < _OFFLINE_FAILURE_THRESHOLD:
+            server_state["last_check_at"] = now
+            return None
         if prev_status == "online":
             server_state["last_seen_online_at"] = now
             change_message = _format_change_message(result, server_state, now)
             _mark_all_players_offline(group_id, result.ip, now)
         server_state["last_status"] = "offline"
-        server_state["last_error"] = result.error
     server_state["last_check_at"] = now
     return change_message
 

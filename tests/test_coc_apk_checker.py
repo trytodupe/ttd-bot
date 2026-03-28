@@ -356,7 +356,7 @@ async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
     fake_bot = FakeBot()
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
-    module._ALERT_KEYS_SENT.clear()
+    module._FAILURE_COUNT_BY_KEY.clear()
 
     monkeypatch.setattr(module, "_should_enable_checker", lambda: True)
     monkeypatch.setattr(module, "_shared_dir", lambda: shared_dir)
@@ -373,6 +373,12 @@ async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
 
     monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
 
+    for _ in range(4):
+        await module.check_coc_apk_update()
+
+    assert fake_bot.calls == []
+    assert module._FAILURE_COUNT_BY_KEY["coc-checker-check-failed"] == 4
+
     await module.check_coc_apk_update()
 
     assert len(fake_bot.calls) == 1
@@ -380,3 +386,51 @@ async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
     assert api == "send_private_msg"
     assert payload["user_id"] == 1669790626
     assert "Scheduled check failed: ConnectError: proxy connect failed" in payload["message"]
+    assert module._FAILURE_COUNT_BY_KEY["coc-checker-check-failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_check_coc_apk_update_resets_failure_counter_after_success(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    module._FAILURE_COUNT_BY_KEY.clear()
+
+    monkeypatch.setattr(module, "_should_enable_checker", lambda: True)
+    monkeypatch.setattr(module, "_shared_dir", lambda: shared_dir)
+    monkeypatch.setattr(
+        module.plugin_config,
+        "coc_checker_group_id",
+        607572668,
+        raising=False,
+    )
+
+    async def fake_fetch_latest_version(_client):
+        return module.CocVersion(
+            version_name="18.200.19",
+            version_code="180200020",
+            update_date="2026-03-20T11:44:56+07:00",
+        )
+
+    async def fake_download_latest_apk(_client, _shared_dir):
+        target = shared_dir / "Clash of Clans_18.200.19_APKPure.apk"
+        target.write_bytes(b"apk")
+        return module.DownloadedApk(filename=target.name, path=target)
+
+    async def fake_upload_group_file(_group_id, _apk):
+        return module.UploadResult(ok=True, detail="")
+
+    async def fake_send_group_message(_group_id, _message):
+        return None
+
+    module._FAILURE_COUNT_BY_KEY["coc-checker-check-failed"] = 3
+    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
+    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
+    monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
+
+    await module.check_coc_apk_update()
+
+    assert "coc-checker-check-failed" not in module._FAILURE_COUNT_BY_KEY

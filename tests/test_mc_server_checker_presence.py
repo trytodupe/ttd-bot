@@ -137,3 +137,65 @@ def test_collect_group_servers_only_online(mc_server_checker_module):
         100: ["a.example:25565"],
         200: ["c.example:25565"],
     }
+
+
+def test_apply_status_update_requires_consecutive_failures_to_mark_offline(
+    mc_server_checker_module,
+):
+    module = mc_server_checker_module
+    server_state = {
+        "last_status": "online",
+        "online_since": 100.0,
+        "last_seen_online_at": 900.0,
+        "consecutive_failures": 0,
+    }
+    offline_result = module.ServerCheckResult(
+        ip="a.example:25565",
+        online=False,
+        error="timeout",
+    )
+
+    for attempt in range(1, 5):
+        message = module._apply_status_update(
+            group_id=123,
+            server_state=server_state,
+            result=offline_result,
+            now=1000.0 + attempt,
+        )
+        assert message is None
+        assert server_state["last_status"] == "online"
+        assert server_state["consecutive_failures"] == attempt
+
+    message = module._apply_status_update(
+        group_id=123,
+        server_state=server_state,
+        result=offline_result,
+        now=1005.0,
+    )
+    assert message == "[-] server a.example:25565 | online for: 15m5s"
+    assert server_state["last_status"] == "offline"
+    assert server_state["consecutive_failures"] == 5
+
+
+def test_apply_status_update_resets_failures_after_success(mc_server_checker_module):
+    module = mc_server_checker_module
+    server_state = {
+        "last_status": "online",
+        "online_since": 100.0,
+        "last_seen_online_at": 900.0,
+        "consecutive_failures": 4,
+        "last_error": "timeout",
+    }
+    online_result = module.ServerCheckResult(ip="a.example:25565", online=True)
+
+    message = module._apply_status_update(
+        group_id=123,
+        server_state=server_state,
+        result=online_result,
+        now=1000.0,
+    )
+
+    assert message is None
+    assert server_state["last_status"] == "online"
+    assert server_state["consecutive_failures"] == 0
+    assert server_state["last_error"] is None

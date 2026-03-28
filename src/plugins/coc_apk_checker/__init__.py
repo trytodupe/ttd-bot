@@ -67,7 +67,8 @@ _APK_MIME = "application/vnd.android.package-archive"
 _FILENAME_RE = re.compile(r'^Clash of Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
-_ALERT_KEYS_SENT: set[str] = set()
+_FAILURE_COUNT_BY_KEY: dict[str, int] = {}
+_ALERT_FAILURE_THRESHOLD = 5
 
 driver = get_driver()
 
@@ -161,16 +162,24 @@ async def _send_private_alert(message: str) -> bool:
         return False
 
 
-async def _send_private_alert_once(key: str, message: str) -> bool:
-    if key in _ALERT_KEYS_SENT:
+async def _maybe_alert_after_failure(key: str, message: str) -> bool:
+    failure_count = _FAILURE_COUNT_BY_KEY.get(key, 0) + 1
+    _FAILURE_COUNT_BY_KEY[key] = failure_count
+    if failure_count < _ALERT_FAILURE_THRESHOLD:
+        logger.warning(
+            "CoC checker failure %s/%s for %s",
+            failure_count,
+            _ALERT_FAILURE_THRESHOLD,
+            key,
+        )
         return False
 
-    _ALERT_KEYS_SENT.add(key)
+    _FAILURE_COUNT_BY_KEY[key] = 0
     return await _send_private_alert(message)
 
 
-def _clear_alert(key: str) -> None:
-    _ALERT_KEYS_SENT.discard(key)
+def _reset_failure_count(key: str) -> None:
+    _FAILURE_COUNT_BY_KEY.pop(key, None)
 
 
 def _is_running_in_docker() -> bool:
@@ -416,7 +425,7 @@ async def check_coc_apk_update() -> None:
                 local_version_name = _latest_local_version_name(shared_dir)
                 if _has_local_version_name(shared_dir, latest_version.version_name):
                     logger.debug("CoC APK already up to date: %s", local_version_name)
-                    _clear_alert("coc-checker-check-failed")
+                    _reset_failure_count("coc-checker-check-failed")
                     return
 
                 logger.info(
@@ -444,7 +453,7 @@ async def check_coc_apk_update() -> None:
                 downloaded_apk,
             )
             if upload_result.ok:
-                _clear_alert("coc-checker-check-failed")
+                _reset_failure_count("coc-checker-check-failed")
                 logger.info("Uploaded CoC APK successfully: %s", downloaded_apk.filename)
                 return
 
@@ -455,7 +464,7 @@ async def check_coc_apk_update() -> None:
             )
         except Exception as exc:
             logger.exception("CoC APK check failed: %s", exc)
-            await _send_private_alert_once(
+            await _maybe_alert_after_failure(
                 "coc-checker-check-failed",
                 f"[coc-apk-checker] Scheduled check failed: {type(exc).__name__}: {exc}",
             )
