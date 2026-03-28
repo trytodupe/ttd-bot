@@ -59,6 +59,17 @@ def test_extract_user_id_from_location(etx_query_module):
     assert module._extract_user_id_from_location("https://osu.ppy.sh/home") is None
 
 
+def test_has_osu_oauth_config(etx_query_module, monkeypatch):
+    module = etx_query_module
+
+    monkeypatch.setattr(module.plugin_config, "etx_osu_client_id", "50302", raising=False)
+    monkeypatch.setattr(module.plugin_config, "etx_osu_client_secret", "secret", raising=False)
+    assert module._has_osu_oauth_config() is True
+
+    monkeypatch.setattr(module.plugin_config, "etx_osu_client_secret", "", raising=False)
+    assert module._has_osu_oauth_config() is False
+
+
 def test_format_duel_rating_message(etx_query_module):
     module = etx_query_module
     now = datetime(2026, 3, 28, 20, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
@@ -146,9 +157,9 @@ async def test_handle_etx_query_success(etx_query_module, monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-    async def fake_lookup_user_id(client, username):
+    async def fake_lookup_user(client, username):
         assert username == "trytodupe"
-        return "15416101"
+        return ("15416101", "[SHK]trytodupe")
 
     async def fake_fetch_duel_rating(client, user_id):
         assert user_id == "15416101"
@@ -167,13 +178,13 @@ async def test_handle_etx_query_success(etx_query_module, monkeypatch):
 
     monkeypatch.setattr(module.matcher, "finish", fake_finish)
     monkeypatch.setattr(module.httpx, "AsyncClient", lambda **kwargs: FakeAsyncClient())
-    monkeypatch.setattr(module, "_lookup_user_id", fake_lookup_user_id)
+    monkeypatch.setattr(module, "_lookup_user", fake_lookup_user)
     monkeypatch.setattr(module, "_fetch_duel_rating", fake_fetch_duel_rating)
 
     event = SimpleNamespace(get_plaintext=lambda: "etx trytodupe")
     await module.handle_etx_query(event)
 
-    assert captured["message"].startswith("trytodupe / 15416101:\n")
+    assert captured["message"].startswith("[SHK]trytodupe / 15416101:\n")
     assert "SR: 5.164" in captured["message"]
     assert "DT: 5.431" in captured["message"]
 
@@ -193,14 +204,35 @@ async def test_handle_etx_query_user_not_found(etx_query_module, monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-    async def fake_lookup_user_id(client, username):
+    async def fake_lookup_user(client, username):
         return None
 
     monkeypatch.setattr(module.matcher, "finish", fake_finish)
     monkeypatch.setattr(module.httpx, "AsyncClient", lambda **kwargs: FakeAsyncClient())
-    monkeypatch.setattr(module, "_lookup_user_id", fake_lookup_user_id)
+    monkeypatch.setattr(module, "_lookup_user", fake_lookup_user)
 
     event = SimpleNamespace(get_plaintext=lambda: "etx unknown user")
     await module.handle_etx_query(event)
 
     assert captured == {"message": "User not found: unknown user"}
+
+
+@pytest.mark.asyncio
+async def test_lookup_user_falls_back_to_redirect(etx_query_module, monkeypatch):
+    module = etx_query_module
+
+    monkeypatch.setattr(module.plugin_config, "etx_osu_client_id", "50302", raising=False)
+    monkeypatch.setattr(module.plugin_config, "etx_osu_client_secret", "secret", raising=False)
+
+    async def fake_lookup_user_by_api(client, username):
+        raise RuntimeError("oauth failed")
+
+    async def fake_lookup_user_by_redirect(client, username):
+        return ("15416101", username)
+
+    monkeypatch.setattr(module, "_lookup_user_by_api", fake_lookup_user_by_api)
+    monkeypatch.setattr(module, "_lookup_user_by_redirect", fake_lookup_user_by_redirect)
+
+    result = await module._lookup_user(object(), "trytodupe")
+
+    assert result == ("15416101", "trytodupe")
