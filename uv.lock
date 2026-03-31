@@ -1376,7 +1376,7 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-deer-pipe"
 version = "0.6.0"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=00a37b0813c188ee116c32f8e8a85a68e25283ad#00a37b0813c188ee116c32f8e8a85a68e25283ad" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=99fd90d8b3e7eabea727d9c16a4a1f7dda52b5bc#99fd90d8b3e7eabea727d9c16a4a1f7dda52b5bc" }
 dependencies = [
     { name = "aiocache" },
     { name = "aiohttp" },
