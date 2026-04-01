@@ -27,7 +27,10 @@ def easy_trigger_module():
     if plugin_dir_text not in sys.path:
         sys.path.insert(0, plugin_dir_text)
 
-    return importlib.import_module("easy_trigger")
+    module_name = "easy_trigger"
+    if module_name in sys.modules:
+        return importlib.reload(sys.modules[module_name])
+    return importlib.import_module(module_name)
 
 
 @pytest.mark.parametrize(
@@ -44,6 +47,38 @@ def test_is_simple_ping(easy_trigger_module, message, expected):
     assert easy_trigger_module._is_simple_ping(message) is expected
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (Message("ttd"), True),
+        (Message("hello TTD"), True),
+        (Message([MessageSegment.at(12345), MessageSegment.text(" ttd help ")]), True),
+        (Message("tid"), False),
+        (Message([MessageSegment.image("https://example.com/image.jpg")]), False),
+    ],
+)
+def test_contains_superuser_ping_keyword(easy_trigger_module, message, expected):
+    assert easy_trigger_module._contains_superuser_ping_keyword(message) is expected
+
+
+def test_should_handle_superuser_ping_accepts_simple_ping(easy_trigger_module):
+    event = type("DummyEvent", (), {"message": Message("   ")})()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is True
+
+
+def test_should_handle_superuser_ping_accepts_keyword(easy_trigger_module):
+    event = type("DummyEvent", (), {"message": Message("hello ttd")})()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is True
+
+
+def test_should_handle_superuser_ping_rejects_other_meaningful_text(easy_trigger_module):
+    event = type("DummyEvent", (), {"message": Message("hello bot")})()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is False
+
+
 @pytest.mark.asyncio
 async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module, monkeypatch):
     captured = {}
@@ -53,27 +88,6 @@ async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module
 
     monkeypatch.setattr(easy_trigger_module.superuser_ping_handler, "finish", fake_finish)
 
-    class DummyEvent:
-        message = Message("   ")
+    await easy_trigger_module.handle_superuser_ping()
 
-    await easy_trigger_module.handle_superuser_ping(DummyEvent())
-
-    assert captured == {"message": "\u6211\u9519\u4e86"}
-
-
-@pytest.mark.asyncio
-async def test_handle_superuser_ping_ignores_meaningful_text(easy_trigger_module, monkeypatch):
-    called = False
-
-    async def fake_finish(*, message=None, **kwargs):
-        nonlocal called
-        called = True
-
-    monkeypatch.setattr(easy_trigger_module.superuser_ping_handler, "finish", fake_finish)
-
-    class DummyEvent:
-        message = Message([MessageSegment.image("https://example.com/image.jpg")])
-
-    await easy_trigger_module.handle_superuser_ping(DummyEvent())
-
-    assert called is False
+    assert captured == {"message": "我错了"}
