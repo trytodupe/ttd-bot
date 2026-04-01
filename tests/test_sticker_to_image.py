@@ -84,6 +84,26 @@ def test_extract_sticker_source_ignores_normal_image(sticker_to_image_module):
     assert module._extract_sticker_source(message) is None
 
 
+def test_extract_sticker_source_accepts_camel_case_subtype(sticker_to_image_module):
+    module = sticker_to_image_module
+    segment = MessageSegment.image("https://example.com/camel.jpg")
+    segment.data["subType"] = "1"
+    segment.data["url"] = "https://example.com/camel.jpg"
+    segment.data["file"] = "camel.jpg"
+
+    assert module._extract_sticker_source(Message([segment])) == "https://example.com/camel.jpg"
+
+
+def test_extract_sticker_source_accepts_animated_summary(sticker_to_image_module):
+    module = sticker_to_image_module
+    segment = MessageSegment.image("https://example.com/animated.jpg")
+    segment.data["summary"] = "[动画表情]"
+    segment.data["url"] = "https://example.com/animated.jpg"
+    segment.data["file"] = "animated.jpg"
+
+    assert module._extract_sticker_source(Message([segment])) == "https://example.com/animated.jpg"
+
+
 def test_build_image_reply_creates_plain_image_segment(sticker_to_image_module):
     module = sticker_to_image_module
 
@@ -111,6 +131,7 @@ def test_extract_reply_sticker_source_requires_to_me_and_simple_text(sticker_to_
     module = sticker_to_image_module
     reply_message = Message([_image_segment(sub_type="1", url="https://example.com/replied.jpg")])
     event = SimpleNamespace(
+        message_type="group",
         to_me=True,
         message=Message([MessageSegment.at(12345), MessageSegment.text(" ")]),
         reply=SimpleNamespace(message=reply_message),
@@ -123,6 +144,7 @@ def test_extract_reply_sticker_source_allows_url_control_text(sticker_to_image_m
     module = sticker_to_image_module
     reply_message = Message([_image_segment(sub_type="1", url="https://example.com/replied.jpg")])
     event = SimpleNamespace(
+        message_type="group",
         to_me=True,
         message=Message([MessageSegment.at(12345), MessageSegment.text(" url ")]),
         reply=SimpleNamespace(message=reply_message),
@@ -135,6 +157,7 @@ def test_extract_reply_sticker_source_ignores_meaningful_text(sticker_to_image_m
     module = sticker_to_image_module
     reply_message = Message([_image_segment(sub_type="1", url="https://example.com/replied.jpg")])
     event = SimpleNamespace(
+        message_type="group",
         to_me=True,
         message=Message([MessageSegment.at(12345), MessageSegment.text("pls")]),
         reply=SimpleNamespace(message=reply_message),
@@ -188,3 +211,50 @@ async def test_handle_sticker_ignores_non_matching_event(sticker_to_image_module
     await module.handle_sticker(event)
 
     assert called is False
+
+
+@pytest.mark.asyncio
+async def test_handle_private_sticker_replies_with_plain_image(sticker_to_image_module, monkeypatch):
+    module = sticker_to_image_module
+    captured = {}
+
+    async def fake_finish(message=None, **kwargs):
+        captured["message"] = message
+
+    monkeypatch.setattr(module.matcher, "finish", fake_finish)
+
+    event = SimpleNamespace(
+        message_type="private",
+        to_me=False,
+        message=Message([_image_segment(sub_type="1", url="https://example.com/private.jpg")]),
+        reply=None,
+    )
+
+    await module.handle_sticker(event)
+
+    assert captured["message"].type == "image"
+    assert captured["message"].data["file"] == "https://example.com/private.jpg"
+
+
+@pytest.mark.asyncio
+async def test_handle_private_reply_url_text(sticker_to_image_module, monkeypatch):
+    module = sticker_to_image_module
+    captured = {}
+
+    async def fake_finish(message=None, **kwargs):
+        captured["message"] = message
+
+    monkeypatch.setattr(module.matcher, "finish", fake_finish)
+
+    event = SimpleNamespace(
+        message_type="private",
+        to_me=False,
+        message=Message([MessageSegment.text("url")]),
+        reply=SimpleNamespace(
+            message=Message([_image_segment(sub_type="1", url="https://example.com/replied-private.jpg")])
+        ),
+    )
+
+    await module.handle_sticker(event)
+
+    assert captured == {"message": "https://example.com/replied-private.jpg"}

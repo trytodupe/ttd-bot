@@ -10,6 +10,8 @@ __plugin_meta__ = PluginMetadata(
     usage="Send a sticker image in private chat, or @ the bot with one in group chat.",
 )
 
+_STICKER_SUMMARIES = {"[动画表情]"}
+
 
 def _should_handle_event(event: MessageEvent) -> bool:
     message_type = str(getattr(event, "message_type", "")).strip().lower()
@@ -20,16 +22,30 @@ def _should_handle_event(event: MessageEvent) -> bool:
     return False
 
 
+def _is_sticker_image_segment(segment: MessageSegment) -> bool:
+    if getattr(segment, "type", None) != "image":
+        return False
+
+    data = dict(getattr(segment, "data", {}) or {})
+    sub_type = str(
+        data.get("sub_type")
+        or data.get("subtype")
+        or data.get("subType")
+        or ""
+    ).strip()
+    if sub_type == "1":
+        return True
+
+    summary = str(data.get("summary") or "").strip()
+    return summary in _STICKER_SUMMARIES
+
+
 def _extract_sticker_source(message: Message) -> str | None:
     for segment in message:
-        if getattr(segment, "type", None) != "image":
+        if not _is_sticker_image_segment(segment):
             continue
 
         data = dict(getattr(segment, "data", {}) or {})
-        sub_type = str(data.get("sub_type") or data.get("subtype") or "").strip()
-        if sub_type != "1":
-            continue
-
         for key in ("url", "file"):
             value = str(data.get(key, "")).strip()
             if value:
@@ -46,20 +62,32 @@ def _extract_control_text(message: Message) -> str:
     return "".join(text_parts).strip().lower()
 
 
-def _extract_reply_sticker_source(event: MessageEvent) -> str | None:
-    if not bool(getattr(event, "to_me", False)):
+def _coerce_message(value: object) -> Message | None:
+    if value is None:
+        return None
+    if isinstance(value, Message):
+        return value
+
+    try:
+        return Message(value)
+    except Exception:
         return None
 
-    reply = getattr(event, "reply", None)
-    if reply is None:
+
+def _extract_reply_sticker_source(event: MessageEvent) -> str | None:
+    if not _should_handle_event(event):
         return None
 
     control_text = _extract_control_text(event.message)
     if control_text not in {"", "url"}:
         return None
 
-    reply_message = getattr(reply, "message", None)
-    if not isinstance(reply_message, Message):
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return None
+
+    reply_message = _coerce_message(getattr(reply, "message", None))
+    if reply_message is None:
         return None
     return _extract_sticker_source(reply_message)
 
