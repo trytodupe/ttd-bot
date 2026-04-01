@@ -31,6 +31,8 @@ def _contains_superuser_ping_keyword(message: Message) -> bool:
 
 
 def _should_handle_superuser_ping(event: MessageEvent) -> bool:
+    if getattr(event, "reply", None) is not None:
+        return False
     return _is_simple_ping(event.message) or _contains_superuser_ping_keyword(event.message)
 
 

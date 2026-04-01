@@ -79,6 +79,26 @@ def test_should_handle_superuser_ping_rejects_other_meaningful_text(easy_trigger
     assert easy_trigger_module._should_handle_superuser_ping(event) is False
 
 
+def test_should_handle_superuser_ping_rejects_reply_even_for_simple_ping(easy_trigger_module):
+    event = type(
+        "DummyEvent",
+        (),
+        {"message": Message(""), "reply": object()},
+    )()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is False
+
+
+def test_should_handle_superuser_ping_rejects_reply_even_for_keyword(easy_trigger_module):
+    event = type(
+        "DummyEvent",
+        (),
+        {"message": Message("ttd"), "reply": object()},
+    )()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is False
+
+
 @pytest.mark.asyncio
 async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module, monkeypatch):
     captured = {}
