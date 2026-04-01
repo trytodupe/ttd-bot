@@ -29,7 +29,7 @@ def etx_query_module():
     if plugin_dir_text not in sys.path:
         sys.path.insert(0, plugin_dir_text)
 
-    module_name = "etx_query"
+    module_name = "_etx_query"
     if module_name in sys.modules:
         module = importlib.reload(sys.modules[module_name])
     else:
