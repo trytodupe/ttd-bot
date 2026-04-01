@@ -14,6 +14,7 @@ services:
       - ./bot.py:/app/bot.py:ro
       - ./uv.lock:/app/uv.lock:ro
       - ./data:/app/data
+      - ./config:/app/config
       - ./db:/app/db
       # - /usr/share/fonts:/usr/share/fonts
       - ./.env:/app/.env:ro
