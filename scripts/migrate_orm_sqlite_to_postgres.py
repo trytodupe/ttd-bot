@@ -124,6 +124,19 @@ def parse_json_value(value: Any) -> Any:
     raise TypeError(f"Unsupported JSON value type: {type(value)!r}")
 
 
+def sanitize_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [sanitize_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            sanitize_strings(key): sanitize_strings(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def parse_datetime_value(value: Any) -> Any:
     if value is None or isinstance(value, datetime):
         return value
@@ -151,7 +164,7 @@ def convert_row(
         column = table.columns[column_name]
 
         if column_name in config.json_columns or isinstance(column.type, (JSON, JSONB)):
-            converted[column_name] = parse_json_value(value)
+            converted[column_name] = sanitize_strings(parse_json_value(value))
             continue
         if column_name in config.datetime_columns or isinstance(column.type, DateTime):
             converted[column_name] = parse_datetime_value(value)
@@ -163,7 +176,7 @@ def convert_row(
             converted[column_name] = bool(value)
             continue
 
-        converted[column_name] = value
+        converted[column_name] = sanitize_strings(value)
 
     return converted
 
@@ -183,14 +196,15 @@ async def get_postgres_count(engine: AsyncEngine, table_name: str) -> int:
 
 
 async def reset_postgres_sequence(engine: AsyncEngine, table_name: str) -> None:
+    table_name_literal = f'"{table_name}"'
     sql = text(
         f"""
         SELECT setval(
-            pg_get_serial_sequence('"${table_name_placeholder}"', 'id'),
+            pg_get_serial_sequence('{table_name_literal}', 'id'),
             COALESCE((SELECT MAX(id) FROM "{table_name}"), 1),
             (SELECT COUNT(*) > 0 FROM "{table_name}")
         )
-        """.replace("${table_name_placeholder}", table_name)
+        """
     )
     async with engine.begin() as conn:
         await conn.execute(sql)
