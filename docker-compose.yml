@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ttd_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-ttd_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - ./db/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ttd_bot} -d ${POSTGRES_DB:-ttd_bot}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+
   nonebot:
     build: .
     image: trytodupe/ttd-bot:${VERSION:-latest}
@@ -9,6 +24,9 @@ services:
       PORT: 8901
       VERSION: ${VERSION:-latest}
       # LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./src:/app/src:ro
       - ./bot.py:/app/bot.py:ro
