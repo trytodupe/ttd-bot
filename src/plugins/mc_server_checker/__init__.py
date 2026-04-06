@@ -25,7 +25,9 @@ from .config import Config
 from .storage import (
     add_server,
     get_group_servers,
+    get_preset_state,
     get_server_state,
+    load_presets,
     load_state,
     remove_server,
     save_state,
@@ -56,10 +58,12 @@ _POLL_LOCK = asyncio.Lock()
 _PLAYER_ONLINE_PLAYERS: dict[tuple[int, str], dict[str, float]] = {}
 _PLAYER_LAST_OFFLINE_AT: dict[tuple[int, str], dict[str, float]] = {}
 
-_QUERY_TRIGGERS = {
-    "\u4fe1\u606f",
-    "\u798f",
-}
+_QUERY_TRIGGERS = frozenset(
+    {
+        "\u4fe1\u606f",
+        "\u798f",
+    }
+)
 
 _HEX_FORMATTING_RE = re.compile("\u00a7x(?:\u00a7[0-9A-Fa-f]){6}")
 _FORMATTING_CODE_RE = re.compile("\u00a7[0-9A-FK-ORa-fk-or]")
@@ -78,9 +82,70 @@ class ServerCheckResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class QueryPreset:
+    trigger: str
+    target_ip: str
+    display_name: str
+    broadcast_group_ids: tuple[int, ...] = ()
+
+
+def _list_query_presets() -> list[QueryPreset]:
+    presets: list[QueryPreset] = []
+    for trigger, raw_preset in load_presets().items():
+        target_ip = str(raw_preset.get("target_ip") or "").strip()
+        display_name = str(raw_preset.get("display_name") or trigger).strip() or trigger
+        raw_group_ids = raw_preset.get("broadcast_group_ids") or []
+        if isinstance(raw_group_ids, list):
+            broadcast_group_ids = tuple(
+                group_id for group_id in raw_group_ids if isinstance(group_id, int)
+            )
+        else:
+            broadcast_group_ids = ()
+        presets.append(
+            QueryPreset(
+                trigger=trigger,
+                target_ip=target_ip,
+                display_name=display_name,
+                broadcast_group_ids=broadcast_group_ids,
+            )
+        )
+    return presets
+
+
+def _get_preset_broadcasts() -> list[QueryPreset]:
+    return [
+        preset
+        for preset in _list_query_presets()
+        if preset.target_ip and preset.broadcast_group_ids
+    ]
+
+
+def _peek_preset_state(state: dict[str, Any], trigger: str) -> dict[str, Any]:
+    presets = state.get("presets", {})
+    if not isinstance(presets, dict):
+        return {}
+    preset_state = presets.get(trigger.strip().casefold(), {})
+    return preset_state if isinstance(preset_state, dict) else {}
+
+
+def _resolve_query_preset(text: str) -> QueryPreset | None:
+    normalized_text = text.strip()
+    if not normalized_text:
+        return None
+
+    for preset in _list_query_presets():
+        if normalized_text.casefold() != preset.trigger.casefold():
+            continue
+        return preset
+    return None
+
+
 def _match_query_trigger(event: GroupMessageEvent) -> bool:
     text = event.get_plaintext().strip()
-    return text in _QUERY_TRIGGERS
+    if not text:
+        return False
+    return text in _QUERY_TRIGGERS or _resolve_query_preset(text) is not None
 
 
 def _is_admin(user_id: int) -> bool:
@@ -133,7 +198,11 @@ def _format_duration(seconds: float | None) -> str:
 
 
 def _format_online_result(
-    result: ServerCheckResult, server_state: dict[str, Any], now: float
+    result: ServerCheckResult,
+    server_state: dict[str, Any],
+    now: float,
+    *,
+    display_name: str | None = None,
 ) -> str:
     online_since = server_state.get("online_since")
     uptime = (
@@ -141,13 +210,14 @@ def _format_online_result(
         if online_since is not None
         else "unknown"
     )
+    server_label = display_name or result.ip
     ping = f"{result.ping_ms}ms" if result.ping_ms is not None else "unknown"
     version = result.version or "unknown"
     motd = result.motd or "unknown"
     players = f"{result.players_online}/{result.players_max}"
     sample = ", ".join(result.player_sample) if result.player_sample else "愣着干嘛, 上号啊"
     return (
-        f"Server: {result.ip} [{version}]\n"
+        f"Server: {server_label} [{version}]\n"
         f"Players: {players} | Ping: {ping} | Uptime: {uptime}\n"
         f"MOTD: {motd}\n"
         f"Online players: {sample}"
@@ -155,23 +225,33 @@ def _format_online_result(
 
 
 def _format_offline_result(
-    result: ServerCheckResult, server_state: dict[str, Any], now: float
+    result: ServerCheckResult,
+    server_state: dict[str, Any],
+    now: float,
+    *,
+    display_name: str | None = None,
 ) -> str:
     last_seen = server_state.get("last_seen_online_at")
     last_seen_text = (
         _format_duration(now - float(last_seen)) if last_seen is not None else "unknown"
     )
+    server_label = display_name or result.ip
     error = result.error or "unknown"
     return (
-        f"Server: {result.ip}\n"
+        f"Server: {server_label}\n"
         f"Status: offline | Last seen: {last_seen_text}\n"
         f"Error: {error}"
     )
 
 
 def _format_change_message(
-    result: ServerCheckResult, server_state: dict[str, Any], now: float
+    result: ServerCheckResult,
+    server_state: dict[str, Any],
+    now: float,
+    *,
+    display_name: str | None = None,
 ) -> str:
+    server_label = display_name or result.ip
     if result.online:
         last_seen = server_state.get("last_seen_online_at")
         last_seen_text = (
@@ -179,14 +259,14 @@ def _format_change_message(
             if last_seen is not None
             else "unknown"
         )
-        return f"[+] server {result.ip} | offline for: {last_seen_text}"
+        return f"[+] server {server_label} | offline for: {last_seen_text}"
     online_since = server_state.get("online_since")
     uptime_text = (
         _format_duration(now - float(online_since))
         if online_since is not None
         else "unknown"
     )
-    return f"[-] server {result.ip} | online for: {uptime_text}"
+    return f"[-] server {server_label} | online for: {uptime_text}"
 
 
 def _presence_key(group_id: int, ip: str) -> tuple[int, str]:
@@ -306,6 +386,8 @@ def _apply_status_update(
     server_state: dict[str, Any],
     result: ServerCheckResult,
     now: float,
+    *,
+    display_name: str | None = None,
 ) -> str | None:
     prev_status = server_state.get("last_status", "unknown")
     consecutive_failures = int(server_state.get("consecutive_failures", 0) or 0)
@@ -314,7 +396,12 @@ def _apply_status_update(
         server_state["consecutive_failures"] = 0
         if prev_status != "online":
             server_state["online_since"] = now
-            change_message = _format_change_message(result, server_state, now)
+            change_message = _format_change_message(
+                result,
+                server_state,
+                now,
+                display_name=display_name,
+            )
         if server_state.get("online_since") is None:
             server_state["online_since"] = now
         server_state["last_status"] = "online"
@@ -329,7 +416,12 @@ def _apply_status_update(
             return None
         if prev_status == "online":
             server_state["last_seen_online_at"] = now
-            change_message = _format_change_message(result, server_state, now)
+            change_message = _format_change_message(
+                result,
+                server_state,
+                now,
+                display_name=display_name,
+            )
             _mark_all_players_offline(group_id, result.ip, now)
         server_state["last_status"] = "offline"
     server_state["last_check_at"] = now
@@ -391,17 +483,23 @@ async def _run_check(
     only_online_servers: bool = False,
 ) -> None:
     async with _POLL_LOCK:
+        broadcast_presets = (
+            _get_preset_broadcasts() if send_changes and not include_player_changes else []
+        )
         async with _STATE_LOCK:
             state = load_state()
             group_servers = _collect_group_servers(state, only_online_servers)
 
-        if not group_servers:
+        if not group_servers and not broadcast_presets:
             return
 
         results_by_group: dict[int, list[ServerCheckResult]] = {}
         for group_id, servers in group_servers.items():
             tasks = [_check_server(ip) for ip in servers]
             results_by_group[group_id] = await asyncio.gather(*tasks)
+        preset_results: list[tuple[QueryPreset, ServerCheckResult]] = []
+        for preset in broadcast_presets:
+            preset_results.append((preset, await _check_server(preset.target_ip)))
 
         now = time.time()
         change_messages: dict[int, list[str]] = {}
@@ -420,6 +518,19 @@ async def _run_check(
                         player_messages = _build_player_diff_messages(group_id, result, now)
                         if player_messages:
                             change_messages.setdefault(group_id, []).extend(player_messages)
+            for preset, result in preset_results:
+                server_state = get_preset_state(state, preset.trigger)
+                change_message = _apply_status_update(
+                    0,
+                    server_state,
+                    result,
+                    now,
+                    display_name=preset.display_name,
+                )
+                if not change_message:
+                    continue
+                for group_id in preset.broadcast_group_ids:
+                    change_messages.setdefault(group_id, []).append(change_message)
             save_state(state)
 
         if send_changes:
@@ -538,10 +649,20 @@ status_matcher = on_message(
 @status_matcher.handle()
 async def handle_status(event: GroupMessageEvent) -> None:
     group_id = int(event.group_id)
+    query_text = event.get_plaintext().strip()
+    query_preset = _resolve_query_preset(query_text)
 
-    async with _STATE_LOCK:
-        state = load_state()
-        servers = list(get_group_servers(state, group_id).keys())
+    if query_preset is not None:
+        if not query_preset.target_ip:
+            await status_matcher.finish(
+                f"Preset {query_preset.trigger} is not configured. "
+                "Please set target_ip in presets.json."
+            )
+        servers = [query_preset.target_ip]
+    else:
+        async with _STATE_LOCK:
+            state = load_state()
+            servers = list(get_group_servers(state, group_id).keys())
 
     if not servers:
         await status_matcher.finish("No servers configured for this group.")
@@ -554,14 +675,40 @@ async def handle_status(event: GroupMessageEvent) -> None:
     async with _STATE_LOCK:
         state = load_state()
         for result in results:
-            server_state = get_server_state(state, group_id, result.ip)
-            change_message = _apply_status_update(group_id, server_state, result, now)
-            if change_message:
-                change_messages.append(change_message)
-            if result.online:
-                blocks.append(_format_online_result(result, server_state, now))
+            if query_preset is not None:
+                server_state = _peek_preset_state(state, query_preset.trigger)
+                display_name = query_preset.display_name
             else:
-                blocks.append(_format_offline_result(result, server_state, now))
+                server_state = get_server_state(state, group_id, result.ip)
+                display_name = None
+                change_message = _apply_status_update(
+                    group_id,
+                    server_state,
+                    result,
+                    now,
+                    display_name=display_name,
+                )
+                if change_message:
+                    change_messages.append(change_message)
+
+            if result.online:
+                blocks.append(
+                    _format_online_result(
+                        result,
+                        server_state,
+                        now,
+                        display_name=display_name,
+                    )
+                )
+            else:
+                blocks.append(
+                    _format_offline_result(
+                        result,
+                        server_state,
+                        now,
+                        display_name=display_name,
+                    )
+                )
         save_state(state)
 
     message = "\n===\n".join(blocks)

@@ -1,6 +1,8 @@
+import asyncio
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import nonebot
 import pytest
@@ -62,6 +64,179 @@ def test_server_change_message_format(mc_server_checker_module):
         now=1000.0,
     )
     assert offline_msg == "[-] server a.example:25565 | online for: 15m"
+
+
+def test_match_query_trigger_accepts_case_insensitive_hsmc(
+    mc_server_checker_module, monkeypatch
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "HSMC",
+            }
+        },
+    )
+
+    assert module._match_query_trigger(SimpleNamespace(get_plaintext=lambda: "hsmc")) is True
+    assert module._match_query_trigger(SimpleNamespace(get_plaintext=lambda: "HSMC")) is True
+    assert module._match_query_trigger(SimpleNamespace(get_plaintext=lambda: "HsMc")) is True
+
+
+def test_match_query_trigger_still_requires_exact_keyword(
+    mc_server_checker_module, monkeypatch
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "HSMC",
+            }
+        },
+    )
+
+    assert module._match_query_trigger(SimpleNamespace(get_plaintext=lambda: "/hsmc")) is False
+    assert module._match_query_trigger(SimpleNamespace(get_plaintext=lambda: " hsmc ")) is True
+
+
+def test_resolve_query_preset_returns_display_name_and_target(
+    mc_server_checker_module, monkeypatch
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "Private HSMC",
+                "broadcast_group_ids": [10001, 10002],
+            }
+        },
+    )
+
+    preset = module._resolve_query_preset("HSMC")
+
+    assert preset == module.QueryPreset(
+        trigger="hsmc",
+        target_ip="mc.example:25565",
+        display_name="Private HSMC",
+        broadcast_group_ids=(10001, 10002),
+    )
+
+
+def test_get_preset_broadcasts_filters_query_only_presets(
+    mc_server_checker_module, monkeypatch
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "Private HSMC",
+                "broadcast_group_ids": [10001],
+            },
+            "queryonly": {
+                "target_ip": "query.example:25565",
+                "display_name": "Query Only",
+                "broadcast_group_ids": [],
+            },
+        },
+    )
+
+    assert module._get_preset_broadcasts() == [
+        module.QueryPreset(
+            trigger="hsmc",
+            target_ip="mc.example:25565",
+            display_name="Private HSMC",
+            broadcast_group_ids=(10001,),
+        )
+    ]
+
+
+def test_format_online_result_can_hide_real_ip(mc_server_checker_module):
+    module = mc_server_checker_module
+
+    result = module.ServerCheckResult(
+        ip="mc.example:25565",
+        online=True,
+        version="1.21.1",
+        motd="Hello",
+    )
+
+    formatted = module._format_online_result(
+        result,
+        {"online_since": 940.0},
+        now=1000.0,
+        display_name="Private HSMC",
+    )
+
+    assert "Server: Private HSMC [1.21.1]" in formatted
+    assert "mc.example:25565" not in formatted
+
+
+def test_run_check_broadcasts_preset_changes_only_to_configured_groups(
+    mc_server_checker_module,
+    monkeypatch,
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "Private HSMC",
+                "broadcast_group_ids": [10001, 10002],
+            }
+        },
+    )
+
+    state = {
+        "groups": {},
+        "presets": {
+            "hsmc": {
+                "last_status": "offline",
+                "last_seen_online_at": 700.0,
+                "consecutive_failures": 0,
+            }
+        },
+    }
+    sent_messages: list[tuple[int, str]] = []
+
+    async def fake_check_server(ip: str):
+        assert ip == "mc.example:25565"
+        return module.ServerCheckResult(ip=ip, online=True)
+
+    async def fake_send_group_message(group_id: int, message: str):
+        sent_messages.append((group_id, message))
+
+    monkeypatch.setattr(module, "_check_server", fake_check_server)
+    monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
+    monkeypatch.setattr(module, "load_state", lambda: state)
+    monkeypatch.setattr(module, "save_state", lambda current_state: None)
+    monkeypatch.setattr(module.time, "time", lambda: 1000.0)
+
+    asyncio.run(
+        module._run_check(
+            send_changes=True,
+            include_player_changes=False,
+            only_online_servers=False,
+        )
+    )
+
+    assert sent_messages == [
+        (10001, "[+] server Private HSMC | offline for: 5m"),
+        (10002, "[+] server Private HSMC | offline for: 5m"),
+    ]
 
 
 def test_player_diff_messages_with_partial_sample(mc_server_checker_module):
