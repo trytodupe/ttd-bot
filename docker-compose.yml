@@ -1,6 +1,14 @@
 services:
   postgres:
     image: postgres:17
+    command: >
+      postgres
+      -c synchronous_commit=off
+      -c commit_delay=10000
+      -c commit_siblings=5
+      -c checkpoint_timeout=15min
+      -c max_wal_size=2GB
+      -c checkpoint_completion_target=0.9
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ttd_bot}
       POSTGRES_USER: ${POSTGRES_USER:-ttd_bot}
@@ -9,9 +17,9 @@ services:
       - ./db/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ttd_bot} -d ${POSTGRES_DB:-ttd_bot}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      interval: 30s
+      timeout: 5s
+      retries: 5
     restart: always
 
   nonebot:
