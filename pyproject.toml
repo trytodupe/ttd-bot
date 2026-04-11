@@ -23,7 +23,7 @@ dependencies = [
     "nonebot-plugin-auto-sendlike>=0.0.12",
     "nonebot-plugin-authrespond>=1.8",
     "nonebot-plugin-deer-pipe @ git+https://github.com/trytodupe/nonebot-plugin-deer-pipe@94e74aaf59ae0f10664a235650dc0227e089d559",
-    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@1d94e943934beac15fcc532af252afb512a9dbc9",
+    # "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@1d94e943934beac15fcc532af252afb512a9dbc9",
     "nonebot-plugin-auto-enter-group", # unused plugin
     "nonebot-plugin-analysis-bilibili>=2.8.1",
     "mcstatus>=11.1.0",
@@ -55,7 +55,7 @@ plugins = [
     "nonebot-plugin-auto-sendlike",
     "nonebot_plugin_authrespond",
     "nonebot_plugin_deer_pipe",
-    "nonebot_plugin_learning_chat",
+    # "nonebot_plugin_learning_chat",
     "nonebot_plugin_auto_enter_group",
     # "nonebot_plugin_analysis_bilibili",
     "nonebot_plugin_groupmate_waifu",
