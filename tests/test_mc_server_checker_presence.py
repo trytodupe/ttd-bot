@@ -162,6 +162,36 @@ def test_get_preset_broadcasts_filters_query_only_presets(
     ]
 
 
+def test_send_group_message_uses_first_bot(
+    mc_server_checker_module, monkeypatch
+):
+    module = mc_server_checker_module
+    sent_calls: list[tuple[str, dict[str, object]]] = []
+
+    class FirstBot:
+        async def call_api(self, api_name: str, **kwargs):
+            sent_calls.append((api_name, kwargs))
+
+    class SecondBot:
+        async def call_api(self, api_name: str, **kwargs):
+            raise AssertionError("second bot should not be used")
+
+    monkeypatch.setattr(
+        module,
+        "get_bots",
+        lambda: {"first": FirstBot(), "second": SecondBot()},
+    )
+
+    asyncio.run(module._send_group_message(12345, "hello"))
+
+    assert sent_calls == [
+        (
+            "send_group_msg",
+            {"group_id": 12345, "message": "hello"},
+        )
+    ]
+
+
 def test_format_online_result_can_hide_real_ip(mc_server_checker_module):
     module = mc_server_checker_module
 
@@ -236,6 +266,153 @@ def test_run_check_broadcasts_preset_changes_only_to_configured_groups(
     assert sent_messages == [
         (10001, "[+] server Private HSMC | offline for: 5m"),
         (10002, "[+] server Private HSMC | offline for: 5m"),
+    ]
+
+
+def test_handle_status_broadcasts_preset_change_to_configured_groups(
+    mc_server_checker_module,
+    monkeypatch,
+):
+    module = mc_server_checker_module
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "Private HSMC",
+                "broadcast_group_ids": [10001, 10002],
+            }
+        },
+    )
+
+    state = {
+        "groups": {},
+        "presets": {
+            "hsmc": {
+                "last_status": "offline",
+                "last_seen_online_at": 700.0,
+                "consecutive_failures": 0,
+            }
+        },
+    }
+    sent_messages: list[tuple[int, str]] = []
+    finished_messages: list[str] = []
+
+    async def fake_check_server(ip: str):
+        assert ip == "mc.example:25565"
+        return module.ServerCheckResult(ip=ip, online=True)
+
+    async def fake_send_group_message(group_id: int, message: str):
+        sent_messages.append((group_id, message))
+
+    async def fake_finish(message: str) -> None:
+        finished_messages.append(message)
+
+    monkeypatch.setattr(module, "_check_server", fake_check_server)
+    monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
+    monkeypatch.setattr(module, "load_state", lambda: state)
+    monkeypatch.setattr(module, "save_state", lambda current_state: None)
+    monkeypatch.setattr(module.time, "time", lambda: 1000.0)
+    monkeypatch.setattr(module.status_matcher, "finish", fake_finish)
+
+    asyncio.run(
+        module.handle_status(
+            SimpleNamespace(group_id=999, user_id=1, get_plaintext=lambda: "hsmc")
+        )
+    )
+
+    assert sent_messages == [
+        (10001, "[+] server Private HSMC | offline for: 5m"),
+        (10002, "[+] server Private HSMC | offline for: 5m"),
+    ]
+    assert finished_messages
+    assert "Status changes:" in finished_messages[0]
+
+
+def test_run_check_broadcasts_preset_player_changes_to_configured_groups(
+    mc_server_checker_module,
+    monkeypatch,
+):
+    module = mc_server_checker_module
+    module._PLAYER_ONLINE_PLAYERS.clear()
+    module._PLAYER_LAST_OFFLINE_AT.clear()
+
+    monkeypatch.setattr(
+        module,
+        "load_presets",
+        lambda: {
+            "hsmc": {
+                "target_ip": "mc.example:25565",
+                "display_name": "Private HSMC",
+                "broadcast_group_ids": [10001, 10002],
+            }
+        },
+    )
+
+    state = {
+        "groups": {},
+        "presets": {
+            "hsmc": {
+                "last_status": "offline",
+                "last_seen_online_at": 700.0,
+                "consecutive_failures": 0,
+            }
+        },
+    }
+    sent_messages: list[tuple[int, str]] = []
+    call_count = 0
+    times = iter([1000.0, 1300.0])
+
+    async def fake_check_server(ip: str):
+        nonlocal call_count
+        call_count += 1
+        assert ip == "mc.example:25565"
+        if call_count == 1:
+            return module.ServerCheckResult(
+                ip=ip,
+                online=True,
+                players_online=2,
+                player_sample=["Alice", "Bob"],
+            )
+        if call_count == 2:
+            return module.ServerCheckResult(
+                ip=ip,
+                online=True,
+                players_online=1,
+                player_sample=["Alice"],
+            )
+        raise AssertionError("unexpected server check call")
+
+    async def fake_send_group_message(group_id: int, message: str):
+        sent_messages.append((group_id, message))
+
+    monkeypatch.setattr(module, "_check_server", fake_check_server)
+    monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
+    monkeypatch.setattr(module, "load_state", lambda: state)
+    monkeypatch.setattr(module, "save_state", lambda current_state: None)
+    monkeypatch.setattr(module.time, "time", lambda: next(times))
+
+    asyncio.run(
+        module._run_check(
+            send_changes=True,
+            include_player_changes=True,
+            only_online_servers=True,
+        )
+    )
+    asyncio.run(
+        module._run_check(
+            send_changes=True,
+            include_player_changes=True,
+            only_online_servers=True,
+        )
+    )
+
+    assert sent_messages == [
+        (10001, "[+] server Private HSMC | offline for: 5m"),
+        (10002, "[+] server Private HSMC | offline for: 5m"),
+        (10001, "[-] Bob Private HSMC | online for: 5m"),
+        (10002, "[-] Bob Private HSMC | online for: 5m"),
     ]
 
 
