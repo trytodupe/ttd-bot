@@ -420,6 +420,8 @@ def test_player_diff_messages_with_partial_sample(mc_server_checker_module):
     module = mc_server_checker_module
     module._PLAYER_ONLINE_PLAYERS.clear()
     module._PLAYER_LAST_OFFLINE_AT.clear()
+    module._PLAYER_PENDING_JOINS.clear()
+    module._PLAYER_PENDING_LEAVES.clear()
 
     ip = "b.example:25565"
     group_id = 123
@@ -448,6 +450,9 @@ def test_player_diff_messages_with_partial_sample(mc_server_checker_module):
         player_sample=["Alice"],
     )
     leave_messages = module._build_player_diff_messages(group_id, full_leave, now=1600.0)
+    assert leave_messages == []
+
+    leave_messages = module._build_player_diff_messages(group_id, full_leave, now=1660.0)
     assert leave_messages == ["[-] Bob b.example:25565 | online for: 10m"]
 
     rejoin = module.ServerCheckResult(
@@ -457,7 +462,109 @@ def test_player_diff_messages_with_partial_sample(mc_server_checker_module):
         player_sample=["Alice", "Bob"],
     )
     join_messages = module._build_player_diff_messages(group_id, rejoin, now=1900.0)
+    assert join_messages == []
+
+    join_messages = module._build_player_diff_messages(group_id, rejoin, now=1960.0)
     assert join_messages == ["[+] Bob b.example:25565 | offline for: 5m"]
+
+
+def test_player_diff_messages_ignore_names_with_spaces(mc_server_checker_module):
+    module = mc_server_checker_module
+    module._PLAYER_ONLINE_PLAYERS.clear()
+    module._PLAYER_LAST_OFFLINE_AT.clear()
+    module._PLAYER_PENDING_JOINS.clear()
+    module._PLAYER_PENDING_LEAVES.clear()
+
+    ip = "c.example:25565"
+    group_id = 456
+
+    first = module.ServerCheckResult(
+        ip=ip,
+        online=True,
+        players_online=2,
+        player_sample=["Alice", "Anonymous Player"],
+    )
+    assert module._build_player_diff_messages(group_id, first, now=1000.0) == []
+    assert module._PLAYER_ONLINE_PLAYERS[(group_id, ip)] == {"Alice": 1000.0}
+
+    leave = module.ServerCheckResult(
+        ip=ip,
+        online=True,
+        players_online=0,
+        player_sample=[],
+    )
+    assert module._build_player_diff_messages(group_id, leave, now=1059.0) == []
+    assert module._build_player_diff_messages(group_id, leave, now=1060.0) == [
+        "[-] Alice c.example:25565 | online for: 1m"
+    ]
+
+
+def test_format_online_result_ignores_names_with_spaces(mc_server_checker_module):
+    module = mc_server_checker_module
+
+    result = module.ServerCheckResult(
+        ip="mc.example:25565",
+        online=True,
+        version="1.21.1",
+        motd="Hello",
+        players_online=2,
+        players_max=20,
+        player_sample=["Alice", "Anonymous Player"],
+    )
+
+    formatted = module._format_online_result(
+        result,
+        {"online_since": 940.0},
+        now=1000.0,
+    )
+
+    assert "Online players: Alice" in formatted
+    assert "Anonymous Player" not in formatted
+
+
+def test_player_diff_messages_require_debounce_for_join_and_leave(
+    mc_server_checker_module,
+):
+    module = mc_server_checker_module
+    module._PLAYER_ONLINE_PLAYERS.clear()
+    module._PLAYER_LAST_OFFLINE_AT.clear()
+    module._PLAYER_PENDING_JOINS.clear()
+    module._PLAYER_PENDING_LEAVES.clear()
+
+    ip = "d.example:25565"
+    group_id = 789
+
+    first = module.ServerCheckResult(
+        ip=ip,
+        online=True,
+        players_online=1,
+        player_sample=["Alice"],
+    )
+    assert module._build_player_diff_messages(group_id, first, now=1000.0) == []
+
+    leave = module.ServerCheckResult(
+        ip=ip,
+        online=True,
+        players_online=0,
+        player_sample=[],
+    )
+    assert module._build_player_diff_messages(group_id, leave, now=1030.0) == []
+    assert module._build_player_diff_messages(group_id, leave, now=1089.0) == []
+    assert module._build_player_diff_messages(group_id, leave, now=1090.0) == [
+        "[-] Alice d.example:25565 | online for: 30s"
+    ]
+
+    rejoin = module.ServerCheckResult(
+        ip=ip,
+        online=True,
+        players_online=1,
+        player_sample=["Alice"],
+    )
+    assert module._build_player_diff_messages(group_id, rejoin, now=1120.0) == []
+    assert module._build_player_diff_messages(group_id, rejoin, now=1149.0) == []
+    assert module._build_player_diff_messages(group_id, rejoin, now=1150.0) == [
+        "[+] Alice d.example:25565 | offline for: 30s"
+    ]
 
 
 def test_collect_group_servers_only_online(mc_server_checker_module):

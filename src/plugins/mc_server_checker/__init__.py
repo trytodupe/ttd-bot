@@ -50,6 +50,9 @@ _POLL_INTERVAL_SECONDS = max(1, int(plugin_config.mc_server_checker_interval_sec
 _PLAYER_POLL_INTERVAL_SECONDS = max(
     1, int(plugin_config.mc_server_checker_player_poll_interval_seconds)
 )
+_PLAYER_DEBOUNCE_SECONDS = max(
+    0, int(plugin_config.mc_server_checker_player_debounce_seconds)
+)
 _OFFLINE_FAILURE_THRESHOLD = 5
 
 _STATE_LOCK = asyncio.Lock()
@@ -57,6 +60,8 @@ _POLL_LOCK = asyncio.Lock()
 
 _PLAYER_ONLINE_PLAYERS: dict[tuple[int, str], dict[str, float]] = {}
 _PLAYER_LAST_OFFLINE_AT: dict[tuple[int, str], dict[str, float]] = {}
+_PLAYER_PENDING_JOINS: dict[tuple[int, str], dict[str, float]] = {}
+_PLAYER_PENDING_LEAVES: dict[tuple[int, str], dict[str, float]] = {}
 
 _QUERY_TRIGGERS = frozenset(
     {
@@ -189,6 +194,17 @@ def _format_duration(seconds: float | None) -> str:
     return "".join(parts)
 
 
+def _normalize_player_name(name: Any) -> str | None:
+    if not isinstance(name, str):
+        return None
+    normalized = name.strip()
+    if not normalized:
+        return None
+    if any(char.isspace() for char in normalized):
+        return None
+    return normalized
+
+
 def _format_online_result(
     result: ServerCheckResult,
     server_state: dict[str, Any],
@@ -207,7 +223,12 @@ def _format_online_result(
     version = result.version or "unknown"
     motd = result.motd or "unknown"
     players = f"{result.players_online}/{result.players_max}"
-    sample = ", ".join(result.player_sample) if result.player_sample else "愣着干嘛, 上号啊"
+    sample_players = [
+        normalized_name
+        for name in result.player_sample
+        if (normalized_name := _normalize_player_name(name)) is not None
+    ]
+    sample = ", ".join(sample_players) if sample_players else "愣着干嘛, 上号啊"
     return (
         f"Server: {server_label} [{version}]\n"
         f"Players: {players} | Ping: {ping} | Uptime: {uptime}\n"
@@ -282,11 +303,15 @@ def _clear_player_presence(group_id: int, ip: str) -> None:
     key = _presence_key(group_id, ip)
     _PLAYER_ONLINE_PLAYERS.pop(key, None)
     _PLAYER_LAST_OFFLINE_AT.pop(key, None)
+    _PLAYER_PENDING_JOINS.pop(key, None)
+    _PLAYER_PENDING_LEAVES.pop(key, None)
 
 
 def _mark_all_players_offline(group_id: int, ip: str, now: float) -> None:
     key = _presence_key(group_id, ip)
     previous = _PLAYER_ONLINE_PLAYERS.pop(key, None)
+    _PLAYER_PENDING_JOINS.pop(key, None)
+    _PLAYER_PENDING_LEAVES.pop(key, None)
     if not previous:
         return
     offline_map = _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
@@ -308,30 +333,41 @@ def _build_player_diff_messages(
     key = _presence_key(group_id, result.ip)
     server_label = display_name or result.ip
     sample_players = {
-        name.strip()
+        normalized_name
         for name in result.player_sample
-        if isinstance(name, str) and name.strip()
+        if (normalized_name := _normalize_player_name(name)) is not None
     }
 
     if key not in _PLAYER_ONLINE_PLAYERS:
         _PLAYER_ONLINE_PLAYERS[key] = {name: now for name in sample_players}
         _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
+        _PLAYER_PENDING_JOINS.pop(key, None)
+        _PLAYER_PENDING_LEAVES.pop(key, None)
         return []
 
     previous_online = _PLAYER_ONLINE_PLAYERS.get(key, {})
     offline_map = _PLAYER_LAST_OFFLINE_AT.setdefault(key, {})
+    pending_joins = _PLAYER_PENDING_JOINS.setdefault(key, {})
+    pending_leaves = _PLAYER_PENDING_LEAVES.setdefault(key, {})
     messages: list[str] = []
     next_online: dict[str, float] = {}
 
     for player_name in sorted(sample_players):
+        pending_leaves.pop(player_name, None)
         if player_name in previous_online:
             next_online[player_name] = previous_online[player_name]
+            pending_joins.pop(player_name, None)
             continue
 
-        next_online[player_name] = now
+        pending_since = pending_joins.setdefault(player_name, now)
+        if now - pending_since < _PLAYER_DEBOUNCE_SECONDS:
+            continue
+
+        next_online[player_name] = pending_since
+        pending_joins.pop(player_name, None)
         offline_at = offline_map.get(player_name)
         offline_for = (
-            _format_duration(now - float(offline_at))
+            _format_duration(pending_since - float(offline_at))
             if offline_at is not None
             else "unknown"
         )
@@ -345,9 +381,15 @@ def _build_player_diff_messages(
             next_online[player_name] = online_since
             continue
 
-        online_for = _format_duration(now - float(online_since))
+        pending_since = pending_leaves.setdefault(player_name, now)
+        if now - pending_since < _PLAYER_DEBOUNCE_SECONDS:
+            next_online[player_name] = online_since
+            continue
+
+        online_for = _format_duration(pending_since - float(online_since))
         messages.append(f"[-] {player_name} {server_label} | online for: {online_for}")
-        offline_map[player_name] = now
+        offline_map[player_name] = pending_since
+        pending_leaves.pop(player_name, None)
 
     _PLAYER_ONLINE_PLAYERS[key] = next_online
     return messages

@@ -11,6 +11,7 @@ class Config(BaseModel):
     mc_server_checker_admins: list[int] = Field(default_factory=list)
     mc_server_checker_interval_seconds: int = 300
     mc_server_checker_player_poll_interval_seconds: int = 10
+    mc_server_checker_player_debounce_seconds: int = 60
     mc_server_checker_timeout_seconds: int = 5
 
     @field_validator("mc_server_checker_admins", mode="before")
