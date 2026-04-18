@@ -624,6 +624,7 @@ def test_apply_status_update_requires_consecutive_failures_to_mark_offline(
         assert message is None
         assert server_state["last_status"] == "online"
         assert server_state["consecutive_failures"] == attempt
+        assert server_state["consecutive_successes"] == 0
 
     message = module._apply_status_update(
         group_id=123,
@@ -634,6 +635,7 @@ def test_apply_status_update_requires_consecutive_failures_to_mark_offline(
     assert message == "[-] server a.example:25565 | online for: 15m5s"
     assert server_state["last_status"] == "offline"
     assert server_state["consecutive_failures"] == 5
+    assert server_state["consecutive_successes"] == 0
 
 
 def test_apply_status_update_resets_failures_after_success(mc_server_checker_module):
@@ -643,6 +645,7 @@ def test_apply_status_update_resets_failures_after_success(mc_server_checker_mod
         "online_since": 100.0,
         "last_seen_online_at": 900.0,
         "consecutive_failures": 4,
+        "consecutive_successes": 0,
         "last_error": "timeout",
     }
     online_result = module.ServerCheckResult(ip="a.example:25565", online=True)
@@ -657,4 +660,45 @@ def test_apply_status_update_resets_failures_after_success(mc_server_checker_mod
     assert message is None
     assert server_state["last_status"] == "online"
     assert server_state["consecutive_failures"] == 0
+    assert server_state["consecutive_successes"] == 1
     assert server_state["last_error"] is None
+
+
+def test_apply_status_update_requires_consecutive_successes_to_mark_online(
+    mc_server_checker_module,
+):
+    module = mc_server_checker_module
+    server_state = {
+        "last_status": "offline",
+        "last_seen_online_at": 700.0,
+        "consecutive_failures": 5,
+        "consecutive_successes": 0,
+        "last_error": "timeout",
+    }
+    online_result = module.ServerCheckResult(ip="a.example:25565", online=True)
+
+    for attempt in range(1, 5):
+        message = module._apply_status_update(
+            group_id=123,
+            server_state=server_state,
+            result=online_result,
+            now=1000.0 + attempt,
+        )
+        assert message is None
+        assert server_state["last_status"] == "offline"
+        assert server_state["consecutive_failures"] == 0
+        assert server_state["consecutive_successes"] == attempt
+
+    message = module._apply_status_update(
+        group_id=123,
+        server_state=server_state,
+        result=online_result,
+        now=1005.0,
+    )
+
+    assert message == "[+] server a.example:25565 | offline for: 5m1s"
+    assert server_state["last_status"] == "online"
+    assert server_state["consecutive_failures"] == 0
+    assert server_state["consecutive_successes"] == 5
+    assert server_state["online_since"] == 1001.0
+    assert server_state["last_seen_online_at"] == 1005.0

@@ -54,6 +54,7 @@ _PLAYER_DEBOUNCE_SECONDS = max(
     0, int(plugin_config.mc_server_checker_player_debounce_seconds)
 )
 _OFFLINE_FAILURE_THRESHOLD = 5
+_ONLINE_SUCCESS_THRESHOLD = 5
 
 _STATE_LOCK = asyncio.Lock()
 _POLL_LOCK = asyncio.Lock()
@@ -441,10 +442,31 @@ def _apply_status_update(
 ) -> str | None:
     prev_status = server_state.get("last_status", "unknown")
     consecutive_failures = int(server_state.get("consecutive_failures", 0) or 0)
+    consecutive_successes = int(server_state.get("consecutive_successes", 0) or 0)
     change_message: str | None = None
     if result.online:
+        next_successes = consecutive_successes + 1
+        server_state["consecutive_successes"] = next_successes
         server_state["consecutive_failures"] = 0
-        if prev_status != "online":
+        server_state["pending_offline_since"] = None
+        server_state["last_error"] = None
+        if prev_status == "offline":
+            pending_online_since = server_state.get("pending_online_since")
+            if pending_online_since is None:
+                pending_online_since = now
+                server_state["pending_online_since"] = pending_online_since
+            if next_successes < _ONLINE_SUCCESS_THRESHOLD:
+                server_state["last_check_at"] = now
+                return None
+
+            server_state["online_since"] = float(pending_online_since)
+            change_message = _format_change_message(
+                result,
+                server_state,
+                now,
+                display_name=display_name,
+            )
+        elif prev_status != "online":
             server_state["online_since"] = now
             change_message = _format_change_message(
                 result,
@@ -454,25 +476,32 @@ def _apply_status_update(
             )
         if server_state.get("online_since") is None:
             server_state["online_since"] = now
+        server_state["pending_online_since"] = None
         server_state["last_status"] = "online"
         server_state["last_seen_online_at"] = now
-        server_state["last_error"] = None
     else:
         next_failures = consecutive_failures + 1
         server_state["consecutive_failures"] = next_failures
+        server_state["consecutive_successes"] = 0
+        server_state["pending_online_since"] = None
         server_state["last_error"] = result.error
-        if prev_status == "online" and next_failures < _OFFLINE_FAILURE_THRESHOLD:
-            server_state["last_check_at"] = now
-            return None
         if prev_status == "online":
-            server_state["last_seen_online_at"] = now
+            pending_offline_since = server_state.get("pending_offline_since")
+            if pending_offline_since is None:
+                pending_offline_since = now
+                server_state["pending_offline_since"] = pending_offline_since
+            if next_failures < _OFFLINE_FAILURE_THRESHOLD:
+                server_state["last_check_at"] = now
+                return None
+            server_state["last_seen_online_at"] = float(pending_offline_since)
             change_message = _format_change_message(
                 result,
                 server_state,
                 now,
                 display_name=display_name,
             )
-            _mark_all_players_offline(group_id, result.ip, now)
+            _mark_all_players_offline(group_id, result.ip, float(pending_offline_since))
+            server_state["pending_offline_since"] = None
         server_state["last_status"] = "offline"
     server_state["last_check_at"] = now
     return change_message
