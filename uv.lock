@@ -1425,7 +1425,7 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-moellmchats"
 version = "0.17.5"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-moellmchats?rev=bda8b484a8bc4568f2c8bd6dd3993d895f89b1c7#bda8b484a8bc4568f2c8bd6dd3993d895f89b1c7" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-moellmchats?rev=93ddbaf5f7749799eea02201a672195e02b5f1a0#93ddbaf5f7749799eea02201a672195e02b5f1a0" }
 dependencies = [
     { name = "aiohttp" },
     { name = "nonebot-adapter-onebot" },
@@ -2297,7 +2297,7 @@ requires-dist = [
     { name = "nonebot-plugin-deer-pipe", git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=94e74aaf59ae0f10664a235650dc0227e089d559" },
     { name = "nonebot-plugin-groupmate-waifu", specifier = ">=0.27" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
-    { name = "nonebot-plugin-moellmchats", git = "https://github.com/trytodupe/nonebot-plugin-moellmchats?rev=bda8b484a8bc4568f2c8bd6dd3993d895f89b1c7" },
+    { name = "nonebot-plugin-moellmchats", git = "https://github.com/trytodupe/nonebot-plugin-moellmchats?rev=93ddbaf5f7749799eea02201a672195e02b5f1a0" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
     { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=dd62785" },
     { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
