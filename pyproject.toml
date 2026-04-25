@@ -35,7 +35,7 @@ dependencies = [
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
     "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@dd62785",
-    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@08749875f76d18236bf7cf9c8c29714b08d9470e",
+    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@999fc3b8a05da63a969312a7011fef25932d7cbb",
 ]
 
 [tool.nonebot]
@@ -68,7 +68,7 @@ plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
 
 # [tool.uv.sources]
-# nonebot-plugin-learning-chat = { path = "../nonebot-plugin-learning-chat", editable = true }
+# nonebot-plugin-moellmchats = { path = "../nonebot-plugin-moellmchats", editable = true }
 
 [dependency-groups]
 dev = [
