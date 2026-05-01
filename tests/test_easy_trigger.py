@@ -99,6 +99,75 @@ def test_should_handle_superuser_ping_rejects_reply_even_for_keyword(easy_trigge
     assert easy_trigger_module._should_handle_superuser_ping(event) is False
 
 
+def test_is_trigger_allowed_accepts_default(easy_trigger_module):
+    event = type("DummyEvent", (), {"user_id": 1001, "group_id": 2001})()
+
+    assert easy_trigger_module._is_trigger_allowed(easy_trigger_module.TRIGGER_MUTE_NOTICE, event) is True
+
+
+def test_is_trigger_allowed_rejects_user_blacklist(easy_trigger_module, monkeypatch):
+    config = easy_trigger_module.Config(
+        easy_trigger_user_blacklist={easy_trigger_module.TRIGGER_MUTE_NOTICE: {"1001"}},
+    )
+    monkeypatch.setattr(easy_trigger_module, "plugin_config", config)
+    event = type("DummyEvent", (), {"user_id": 1001, "group_id": 2001})()
+
+    assert easy_trigger_module._is_trigger_allowed(easy_trigger_module.TRIGGER_MUTE_NOTICE, event) is False
+
+
+def test_is_trigger_allowed_rejects_group_blacklist(easy_trigger_module, monkeypatch):
+    config = easy_trigger_module.Config(
+        easy_trigger_group_blacklist={easy_trigger_module.TRIGGER_SUPERUSER_PING: {"2001"}},
+    )
+    monkeypatch.setattr(easy_trigger_module, "plugin_config", config)
+    event = type("DummyEvent", (), {"user_id": 1001, "group_id": 2001})()
+
+    assert easy_trigger_module._is_trigger_allowed(easy_trigger_module.TRIGGER_SUPERUSER_PING, event) is False
+
+
+def test_is_trigger_allowed_whitelist_overrides_blacklist(easy_trigger_module, monkeypatch):
+    config = easy_trigger_module.Config(
+        easy_trigger_user_blacklist={easy_trigger_module.TRIGGER_SUPERUSER_PING: {"1001"}},
+        easy_trigger_group_blacklist={easy_trigger_module.TRIGGER_SUPERUSER_PING: {"2001"}},
+        easy_trigger_user_whitelist={easy_trigger_module.TRIGGER_SUPERUSER_PING: {"1001"}},
+    )
+    monkeypatch.setattr(easy_trigger_module, "plugin_config", config)
+    event = type("DummyEvent", (), {"user_id": 1001, "group_id": 2001})()
+
+    assert easy_trigger_module._is_trigger_allowed(easy_trigger_module.TRIGGER_SUPERUSER_PING, event) is True
+
+
+def test_is_trigger_allowed_keeps_trigger_scopes_separate(easy_trigger_module, monkeypatch):
+    config = easy_trigger_module.Config(
+        easy_trigger_user_blacklist={easy_trigger_module.TRIGGER_MUTE_NOTICE: {"1001"}},
+    )
+    monkeypatch.setattr(easy_trigger_module, "plugin_config", config)
+    event = type("DummyEvent", (), {"user_id": 1001, "group_id": 2001})()
+
+    assert easy_trigger_module._is_trigger_allowed(easy_trigger_module.TRIGGER_SUPERUSER_PING, event) is True
+
+
+def test_should_handle_superuser_ping_rejects_trigger_blacklist(easy_trigger_module, monkeypatch):
+    config = easy_trigger_module.Config(
+        easy_trigger_user_blacklist={easy_trigger_module.TRIGGER_SUPERUSER_PING: {"1001"}},
+    )
+    monkeypatch.setattr(easy_trigger_module, "plugin_config", config)
+    event = type("DummyEvent", (), {"user_id": 1001, "message": Message("ttd")})()
+
+    assert easy_trigger_module._should_handle_superuser_ping(event) is False
+
+
+def test_config_parses_trigger_id_map_from_json(easy_trigger_module):
+    config = easy_trigger_module.Config(
+        easy_trigger_user_blacklist='{"superuser_ping": [1001, "1002"], "mute_notice": "2001,2002"}',
+    )
+
+    assert config.easy_trigger_user_blacklist == {
+        easy_trigger_module.TRIGGER_SUPERUSER_PING: {"1001", "1002"},
+        easy_trigger_module.TRIGGER_MUTE_NOTICE: {"2001", "2002"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module, monkeypatch):
     captured = {}
