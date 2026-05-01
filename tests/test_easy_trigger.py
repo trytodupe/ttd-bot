@@ -61,6 +61,20 @@ def test_contains_superuser_ping_keyword(easy_trigger_module, message, expected)
     assert easy_trigger_module._contains_superuser_ping_keyword(message) is expected
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (Message("冰茶猫"), True),
+        (Message("冰茶喵"), True),
+        (Message(" 冰茶猫 "), True),
+        (Message("来点冰茶猫"), False),
+        (Message([MessageSegment.at(12345), MessageSegment.text("冰茶猫")]), True),
+    ],
+)
+def test_is_ice_tea_neko_trigger(easy_trigger_module, message, expected):
+    assert easy_trigger_module._is_ice_tea_neko_trigger(message) is expected
+
+
 def test_should_handle_superuser_ping_accepts_simple_ping(easy_trigger_module):
     event = type("DummyEvent", (), {"message": Message("   ")})()
 
@@ -157,6 +171,18 @@ def test_should_handle_superuser_ping_rejects_trigger_blacklist(easy_trigger_mod
     assert easy_trigger_module._should_handle_superuser_ping(event) is False
 
 
+def test_should_handle_ice_tea_neko_accepts_keyword(easy_trigger_module):
+    event = type("DummyEvent", (), {"message": Message("冰茶喵"), "user_id": 1001})()
+
+    assert easy_trigger_module._should_handle_ice_tea_neko(event) is True
+
+
+def test_should_handle_ice_tea_neko_rejects_other_text(easy_trigger_module):
+    event = type("DummyEvent", (), {"message": Message("冰茶"), "user_id": 1001})()
+
+    assert easy_trigger_module._should_handle_ice_tea_neko(event) is False
+
+
 def test_config_parses_trigger_id_map_from_json(easy_trigger_module):
     config = easy_trigger_module.Config(
         easy_trigger_user_blacklist='{"superuser_ping": [1001, "1002"], "mute_notice": "2001,2002"}',
@@ -180,3 +206,18 @@ async def test_handle_superuser_ping_replies_for_simple_ping(easy_trigger_module
     await easy_trigger_module.handle_superuser_ping()
 
     assert captured == {"message": "我错了"}
+
+
+@pytest.mark.asyncio
+async def test_handle_ice_tea_neko_replies_with_image(easy_trigger_module, monkeypatch):
+    captured = {}
+
+    async def fake_finish(*, message=None, **kwargs):
+        captured["message"] = message
+
+    monkeypatch.setattr(easy_trigger_module.ice_tea_neko_handler, "finish", fake_finish)
+
+    await easy_trigger_module.handle_ice_tea_neko()
+
+    assert captured["message"].type == "image"
+    assert captured["message"].data["file"] == easy_trigger_module._ICE_TEA_NEKO_IMAGE_URI

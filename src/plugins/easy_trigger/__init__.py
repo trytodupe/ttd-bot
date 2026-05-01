@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from nonebot import Bot, get_plugin_config, on_message, on_notice
-from nonebot.adapters.onebot.v11 import GroupBanNoticeEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import GroupBanNoticeEvent, Message, MessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, is_type, to_me
@@ -15,11 +17,14 @@ __plugin_meta__ = PluginMetadata(
 
 TRIGGER_MUTE_NOTICE = "mute_notice"
 TRIGGER_SUPERUSER_PING = "superuser_ping"
+TRIGGER_ICE_TEA_NEKO = "ice_tea_neko"
 MUTE_REPLY = "还能说话吗？"
 SELF_UNMUTED_REPLY = "哥我知道错了"
 SUPERUSER_PING_REPLY = "我错了"
 _SIMPLE_PING_SEGMENT_TYPES = {"text", "at"}
 _SUPERUSER_PING_KEYWORD = "ttd"
+_ICE_TEA_NEKO_KEYWORDS = {"冰茶猫", "冰茶喵"}
+_ICE_TEA_NEKO_IMAGE_URI = (Path(__file__).resolve().parent / "assets" / "IceTeaNeko.png").as_uri()
 
 plugin_config = get_plugin_config(Config)
 
@@ -65,6 +70,10 @@ def _contains_superuser_ping_keyword(message: Message) -> bool:
     return _SUPERUSER_PING_KEYWORD in message.extract_plain_text().lower()
 
 
+def _is_ice_tea_neko_trigger(message: Message) -> bool:
+    return message.extract_plain_text().strip() in _ICE_TEA_NEKO_KEYWORDS
+
+
 def _should_handle_superuser_ping(event: MessageEvent) -> bool:
     if not _is_trigger_allowed(TRIGGER_SUPERUSER_PING, event):
         return False
@@ -73,9 +82,20 @@ def _should_handle_superuser_ping(event: MessageEvent) -> bool:
     return _is_simple_ping(event.message) or _contains_superuser_ping_keyword(event.message)
 
 
+def _should_handle_ice_tea_neko(event: MessageEvent) -> bool:
+    if not _is_trigger_allowed(TRIGGER_ICE_TEA_NEKO, event):
+        return False
+    return _is_ice_tea_neko_trigger(event.message)
+
+
 superuser_ping_handler = on_message(
     rule=to_me() & Rule(_should_handle_superuser_ping),
     permission=SUPERUSER,
+    priority=1,
+    block=False,
+)
+ice_tea_neko_handler = on_message(
+    rule=Rule(_should_handle_ice_tea_neko),
     priority=1,
     block=False,
 )
@@ -95,3 +115,8 @@ async def handle_mute(event: GroupBanNoticeEvent, bot: Bot):
 @superuser_ping_handler.handle()
 async def handle_superuser_ping() -> None:
     await superuser_ping_handler.finish(message=SUPERUSER_PING_REPLY)
+
+
+@ice_tea_neko_handler.handle()
+async def handle_ice_tea_neko() -> None:
+    await ice_tea_neko_handler.finish(message=MessageSegment.image(_ICE_TEA_NEKO_IMAGE_URI))
