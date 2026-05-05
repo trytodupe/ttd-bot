@@ -1401,7 +1401,7 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-deer-pipe"
 version = "0.6.0"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=bc6ea016ca0fdf59b3a0249fd09981b63cf3b18a#bc6ea016ca0fdf59b3a0249fd09981b63cf3b18a" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=db47d23c9081fda25809c903e65143a2357e959d#db47d23c9081fda25809c903e65143a2357e959d" }
 dependencies = [
     { name = "aiocache" },
     { name = "aiohttp" },
@@ -2338,7 +2338,7 @@ requires-dist = [
     { name = "nonebot-plugin-chatrecorder", specifier = ">=0.7.0" },
     { name = "nonebot-plugin-clovers", specifier = ">=0.3.5" },
     { name = "nonebot-plugin-datastore", specifier = ">=1.3.1" },
-    { name = "nonebot-plugin-deer-pipe", git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=bc6ea016ca0fdf59b3a0249fd09981b63cf3b18a" },
+    { name = "nonebot-plugin-deer-pipe", git = "https://github.com/trytodupe/nonebot-plugin-deer-pipe?rev=db47d23c9081fda25809c903e65143a2357e959d" },
     { name = "nonebot-plugin-groupmate-waifu", specifier = ">=0.27" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-moellmchats", git = "https://github.com/trytodupe/nonebot-plugin-moellmchats?rev=81820c4d1e510a2f8943dc94c2fe78e926635c59" },
