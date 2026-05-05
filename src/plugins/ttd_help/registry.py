@@ -148,6 +148,18 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         ),
     ),
     FeatureDoc(
+        key="access_request",
+        title="私聊权限申请",
+        description="管理插件能力申请，当前用于 moellmchat 私聊开通审批。",
+        providers=("access_request",),
+        visibility="admin",
+        commands=(
+            "查看权限申请",
+            "同意权限申请 <request_id>",
+            "拒绝权限申请 <request_id>",
+        ),
+    ),
+    FeatureDoc(
         key="authrespond",
         title="插件响应权限",
         description="管理插件级和群级响应黑白名单。",
