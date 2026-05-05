@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 
 from nonebot import Bot, get_plugin_config, on_message, on_notice
@@ -24,7 +25,7 @@ SUPERUSER_PING_REPLY = "我错了"
 _SIMPLE_PING_SEGMENT_TYPES = {"text", "at"}
 _SUPERUSER_PING_KEYWORD = "ttd"
 _ICE_TEA_NEKO_KEYWORDS = {"冰茶猫", "冰茶喵"}
-_ICE_TEA_NEKO_IMAGE_URI = (Path(__file__).resolve().parent / "assets" / "IceTeaNeko.png").as_uri()
+_ICE_TEA_NEKO_IMAGE_PATH = Path(__file__).resolve().parent / "assets" / "IceTeaNeko.png"
 
 plugin_config = get_plugin_config(Config)
 
@@ -74,6 +75,11 @@ def _is_ice_tea_neko_trigger(message: Message) -> bool:
     return message.extract_plain_text().strip() in _ICE_TEA_NEKO_KEYWORDS
 
 
+def _ice_tea_neko_image_base64() -> str:
+    encoded = base64.b64encode(_ICE_TEA_NEKO_IMAGE_PATH.read_bytes()).decode("ascii")
+    return f"base64://{encoded}"
+
+
 def _should_handle_superuser_ping(event: MessageEvent) -> bool:
     if not _is_trigger_allowed(TRIGGER_SUPERUSER_PING, event):
         return False
@@ -119,4 +125,4 @@ async def handle_superuser_ping() -> None:
 
 @ice_tea_neko_handler.handle()
 async def handle_ice_tea_neko() -> None:
-    await ice_tea_neko_handler.finish(message=MessageSegment.image(_ICE_TEA_NEKO_IMAGE_URI))
+    await ice_tea_neko_handler.finish(message=MessageSegment.image(_ice_tea_neko_image_base64()))

@@ -220,4 +220,4 @@ async def test_handle_ice_tea_neko_replies_with_image(easy_trigger_module, monke
     await easy_trigger_module.handle_ice_tea_neko()
 
     assert captured["message"].type == "image"
-    assert captured["message"].data["file"] == easy_trigger_module._ICE_TEA_NEKO_IMAGE_URI
+    assert captured["message"].data["file"].startswith("base64://")
