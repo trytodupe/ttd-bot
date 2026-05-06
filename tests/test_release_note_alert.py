@@ -157,7 +157,7 @@ async def test_publish_release_note_uses_call_api(release_note_module, monkeypat
 def test_format_release_note_truncates_to_limit(release_note_module):
     result = release_note_module.format_release_note(
         "v1.4.18",
-        "This is a very long deploy tag message that should be truncated",
+        "这是一个很长的发布标签说明，需要在最终签名里按长度限制截断到允许范围内",
         12,
     )
 
@@ -167,9 +167,9 @@ def test_format_release_note_truncates_to_limit(release_note_module):
 
 
 def test_format_release_note_normalizes_whitespace(release_note_module):
-    result = release_note_module.format_release_note("v1.4.18", "  deploy   tag   message  ", 1)
+    result = release_note_module.format_release_note("v1.4.18", "  更新   发布标签   文案  ", 1)
 
-    assert result == "v1.4.18: deploy tag message (+1)"
+    assert result == "v1.4.18: 更新 发布标签 文案 (+1)"
 
 
 @pytest.mark.asyncio
@@ -209,7 +209,7 @@ async def test_check_and_publish_release_note_updates_tag_even_if_publish_fails(
         return 7
 
     async def fake_get_tag_message(tag_name: str):
-        return "deploy tag message"
+        return "发布标签文案"
 
     async def fake_publish_release_note(_release_note: str):
         return False

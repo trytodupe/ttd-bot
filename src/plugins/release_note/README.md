@@ -10,7 +10,7 @@
 - 将更新日志发布到 QQ 个人签名
 - 自动更新远程仓库的 `last-deployed` tag
 - GitHub token 失效/权限异常时私聊告警 `SUPERUSERS[0]`
-- 发布侧 deploy tag 必须通过生成脚本创建 annotated tag，并写入简短 message，禁止直接手工 `git tag`
+- 发布侧 deploy tag 必须通过生成脚本创建 annotated tag，并写入简短中文 message，禁止直接手工 `git tag`
 
 ## 配置
 
@@ -57,8 +57,9 @@ MAX_MESSAGE_LENGTH=60
 - 当 GitHub API 返回 token/权限异常（典型是 401/403 + `Bad credentials` 等）时，插件会私聊 `SUPERUSERS[0]`。
 - 插件进程内对该类告警做去重，避免单次启动期间重复刷屏。
 - 该告警逻辑在 `release_note` 插件内实现，不依赖 `./deploy.sh`。
-- deploy tag 的 message 是 release note 的主输入，必须通过发布脚本生成 annotated tag，且控制在 50 字符内。
-- 当前发布格式为 `<version>: <tag message> (+N)`，例如 `v1.4.18: fix deps pin (+7)`。
+- deploy tag 的 message 是 release note 的主输入，必须通过发布脚本生成 annotated tag，且控制在 80 字符内。
+- deploy tag 的 message 一律使用中文。
+- 当前发布格式为 `<version>: <tag message> (+N)`，例如 `v1.4.18: 更新 moellmchats 依赖版本 (+7)`。
 
 ## API 端点
 

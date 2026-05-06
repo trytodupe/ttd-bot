@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 
-MAX_TAG_MESSAGE_LENGTH = 50
+MAX_TAG_MESSAGE_LENGTH = 80
 
 
 def _normalize(text: str) -> str:

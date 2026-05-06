@@ -23,7 +23,7 @@ __plugin_meta__ = PluginMetadata(
 
 GITHUB_API_BASE = f"https://api.github.com/repos/{plugin_config.github_repo_owner}/{plugin_config.github_repo_name}"
 LAST_DEPLOYED_TAG = plugin_config.last_deployed_tag
-MAX_LONGNICK_LENGTH = 50
+MAX_LONGNICK_LENGTH = 80
 
 GITHUB_AUTH_FAILURE_HINTS = (
     "bad credentials",
