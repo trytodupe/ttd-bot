@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ttd-help-coverage
+        name: ttd-help-coverage
+        entry: python3 scripts/precommit_ttd_help_gate.py
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|src/plugins/)
