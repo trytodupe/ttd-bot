@@ -23,6 +23,7 @@ __plugin_meta__ = PluginMetadata(
 
 GITHUB_API_BASE = f"https://api.github.com/repos/{plugin_config.github_repo_owner}/{plugin_config.github_repo_name}"
 LAST_DEPLOYED_TAG = plugin_config.last_deployed_tag
+MAX_LONGNICK_LENGTH = 50
 
 GITHUB_AUTH_FAILURE_HINTS = (
     "bad credentials",
@@ -123,6 +124,21 @@ def _is_github_auth_failure(status_code: int, body_text: str) -> bool:
     return any(keyword in normalized_text for keyword in GITHUB_AUTH_FAILURE_HINTS)
 
 
+def _normalize_longnick_text(text: str) -> str:
+    return " ".join(text.split()).strip()
+
+
+def _fit_longnick_text(text: str, max_length: int = MAX_LONGNICK_LENGTH) -> str:
+    normalized = _normalize_longnick_text(text)
+    if len(normalized) <= max_length:
+        return normalized
+
+    if max_length <= 0:
+        return ""
+
+    return normalized[:max_length].rstrip(" .,;:，。；：-_+/")
+
+
 async def _notify_github_auth_failure(operation: str, status_code: int, body_text: str) -> bool:
     if not _is_github_auth_failure(status_code, body_text):
         return False
@@ -149,6 +165,14 @@ async def get_current_version() -> Optional[str]:
 
 
 async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
+    tag_ref = await _get_tag_ref(tag_name)
+    if tag_ref is None:
+        return None
+
+    return await _resolve_tag_commit_sha(tag_name, tag_ref)
+
+
+async def _get_tag_ref(tag_name: str) -> Optional[dict]:
     import httpx
 
     try:
@@ -165,42 +189,118 @@ async def get_tag_commit_sha(tag_name: str) -> Optional[str]:
             )
 
             if response.status_code == 200:
-                data = response.json()
-                if data["object"]["type"] == "tag":
-                    tag_response = await client.get(
-                        data["object"]["url"],
-                        headers=headers,
-                        timeout=30.0,
-                    )
-                    if tag_response.status_code == 200:
-                        return tag_response.json()["object"]["sha"]
-                    await _notify_github_auth_failure(
-                        "get_tag_commit_sha:resolve_annotated_tag",
-                        tag_response.status_code,
-                        tag_response.text,
-                    )
-                    logger.error(
-                        "Failed to resolve annotated tag %s: %s",
-                        tag_name,
-                        tag_response.status_code,
-                    )
-                    return None
-
-                return data["object"]["sha"]
+                return response.json()
 
             if response.status_code == 404:
                 logger.info("Tag %s not found", tag_name)
                 return None
 
             await _notify_github_auth_failure(
-                "get_tag_commit_sha",
+                "_get_tag_ref",
                 response.status_code,
                 response.text,
             )
             logger.error("Failed to get tag %s: %s", tag_name, response.status_code)
             return None
     except Exception as exc:
-        logger.error("Error getting tag commit SHA: %s", exc)
+        logger.error("Error getting tag ref: %s", exc)
+        return None
+
+
+async def _resolve_tag_commit_sha(tag_name: str, tag_ref: dict) -> Optional[str]:
+    import httpx
+
+    try:
+        if tag_ref["object"]["type"] != "tag":
+            return tag_ref["object"]["sha"]
+
+        async with httpx.AsyncClient() as client:
+            headers = {"Accept": "application/vnd.github.v3+json"}
+            token = await get_github_token()
+            if token:
+                headers["Authorization"] = f"token {token}"
+
+            tag_response = await client.get(
+                tag_ref["object"]["url"],
+                headers=headers,
+                timeout=30.0,
+            )
+            if tag_response.status_code == 200:
+                return tag_response.json()["object"]["sha"]
+
+            await _notify_github_auth_failure(
+                "get_tag_commit_sha:resolve_annotated_tag",
+                tag_response.status_code,
+                tag_response.text,
+            )
+            logger.error(
+                "Failed to resolve annotated tag %s: %s",
+                tag_name,
+                tag_response.status_code,
+            )
+            return None
+    except Exception as exc:
+        logger.error("Error resolving tag commit SHA: %s", exc)
+        return None
+
+
+async def get_tag_message(tag_name: str) -> Optional[str]:
+    tag_ref = await _get_tag_ref(tag_name)
+    if tag_ref is None:
+        return None
+
+    import httpx
+
+    try:
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        token = await get_github_token()
+        if token:
+            headers["Authorization"] = f"token {token}"
+
+        async with httpx.AsyncClient() as client:
+            if tag_ref["object"]["type"] == "tag":
+                tag_response = await client.get(
+                    tag_ref["object"]["url"],
+                    headers=headers,
+                    timeout=30.0,
+                )
+                if tag_response.status_code != 200:
+                    await _notify_github_auth_failure(
+                        "get_tag_message:resolve_annotated_tag",
+                        tag_response.status_code,
+                        tag_response.text,
+                    )
+                    logger.error(
+                        "Failed to resolve annotated tag message %s: %s",
+                        tag_name,
+                        tag_response.status_code,
+                    )
+                    return None
+
+                message = str(tag_response.json().get("message", "")).splitlines()[0].strip()
+                return message or tag_response.json().get("tag") or None
+
+            commit_response = await client.get(
+                tag_ref["object"]["url"],
+                headers=headers,
+                timeout=30.0,
+            )
+            if commit_response.status_code != 200:
+                await _notify_github_auth_failure(
+                    "get_tag_message:resolve_lightweight_tag",
+                    commit_response.status_code,
+                    commit_response.text,
+                )
+                logger.error(
+                    "Failed to resolve lightweight tag message %s: %s",
+                    tag_name,
+                    commit_response.status_code,
+                )
+                return None
+
+            return str(commit_response.json()["commit"]["message"]).splitlines()[0].strip()
+    except Exception as exc:
+        logger.error("Error getting tag message: %s", exc)
         return None
 
 
@@ -246,6 +346,52 @@ async def get_commits_between(base_sha: Optional[str], head_sha: str) -> list[di
     except Exception as exc:
         logger.error("Error getting commits: %s", exc)
         return []
+
+
+async def get_commit_count_between(base_sha: Optional[str], head_sha: str) -> int:
+    import httpx
+
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {"Accept": "application/vnd.github.v3+json"}
+            token = await get_github_token()
+            if token:
+                headers["Authorization"] = f"token {token}"
+
+            if base_sha:
+                response = await client.get(
+                    f"{GITHUB_API_BASE}/compare/{base_sha}...{head_sha}",
+                    headers=headers,
+                    timeout=30.0,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    ahead_by = data.get("ahead_by")
+                    if isinstance(ahead_by, int):
+                        return ahead_by
+                    commits = data.get("commits", [])
+                    return len(commits) if isinstance(commits, list) else 0
+            else:
+                response = await client.get(
+                    f"{GITHUB_API_BASE}/commits",
+                    params={"sha": head_sha, "per_page": 100},
+                    headers=headers,
+                    timeout=30.0,
+                )
+                if response.status_code == 200:
+                    commits = response.json()
+                    return len(commits) if isinstance(commits, list) else 0
+
+            await _notify_github_auth_failure(
+                "get_commit_count_between",
+                response.status_code,
+                response.text,
+            )
+            logger.error("Failed to get commit count: %s", response.status_code)
+            return 0
+    except Exception as exc:
+        logger.error("Error getting commit count: %s", exc)
+        return 0
 
 
 async def get_version_tags_at_commit(commit_sha: str) -> list[str]:
@@ -376,24 +522,27 @@ async def publish_release_note(release_note: str) -> bool:
         return False
 
 
-def format_release_note(commits: list[dict], old_version: Optional[str], new_version: str) -> str:
-    if not commits:
-        return f"版本 {new_version} 已部署，无新提交"
+def format_release_note(version: str, tag_message: str, commit_count: int) -> str:
+    prefix = _normalize_longnick_text(version)
+    summary = _normalize_longnick_text(tag_message) or "deploy"
+    suffix = f" (+{max(commit_count, 0)})"
 
-    lines = []
-    if old_version:
-        lines.append(f"🚀 版本更新: {old_version} → {new_version}")
-    else:
-        lines.append(f"🚀 版本 {new_version} 已部署")
+    if not prefix:
+        prefix = "deploy"
 
-    lines.append("")
-    lines.append("📝 更新内容:")
+    base = f"{prefix}: "
+    max_summary_length = MAX_LONGNICK_LENGTH - len(base) - len(suffix)
+    if max_summary_length < 1:
+        return _fit_longnick_text(f"{prefix}{suffix}")
 
-    for commit in commits:
-        message = commit["commit"]["message"].split("\n")[0]
-        lines.append(f"  • {message}")
+    if len(summary) > max_summary_length:
+        summary = summary[:max_summary_length].rstrip(" .,;:，。；：-_+/")
+        if not summary:
+            summary = "deploy"
+            summary = summary[:max_summary_length]
 
-    return "\n".join(lines)
+    release_note = f"{base}{summary}{suffix}"
+    return _fit_longnick_text(release_note)
 
 
 async def check_and_publish_release_note() -> None:
@@ -415,21 +564,16 @@ async def check_and_publish_release_note() -> None:
             logger.info("No new commits since last deployment")
             return
 
-        commits = await get_commits_between(last_deployed_sha, current_sha)
-        if not commits and last_deployed_sha:
+        commit_count = await get_commit_count_between(last_deployed_sha, current_sha)
+        if last_deployed_sha and commit_count <= 0:
             logger.info("No new commits found")
             return
 
-        old_version = None
-        if last_deployed_sha:
-            version_tags = await get_version_tags_at_commit(last_deployed_sha)
-            if version_tags:
-                old_version = version_tags[0]
-                logger.info("Found old version tags: %s, using: %s", version_tags, old_version)
-            else:
-                old_version = "previous"
+        tag_message = await get_tag_message(current_version)
+        if not tag_message:
+            tag_message = current_version
 
-        release_note = format_release_note(commits, old_version, current_version)
+        release_note = format_release_note(current_version, tag_message, commit_count)
         logger.info("Generated release note:\n%s", release_note)
 
         published = await publish_release_note(release_note)

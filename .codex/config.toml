@@ -1,0 +1,12 @@
+[features]
+hooks = true
+
+[hooks]
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python3 /Users/ttd/repositories/qqBot/ttd-bot/.codex/hooks/block_ttd_bot_git_tag.py"
+statusMessage = "checking ttd-bot tag policy"

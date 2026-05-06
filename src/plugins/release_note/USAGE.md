@@ -26,7 +26,7 @@ GITHUB_TOKEN=ghp_your_github_token_here
 
 1. Bot 连接成功后延迟 5 秒执行检查
 2. 比较当前 VERSION 与 `last-deployed` tag
-3. 如果有新 commits，发布 release note 到 QQ 个人签名
+3. 读取当前 deploy tag 的 message，生成 `<version>: <tag message> (+N)` 形式的 release note
 4. 更新远程仓库的 `last-deployed` tag
 
 ### 4. GitHub token 异常私聊告警
@@ -64,13 +64,7 @@ Bot 启动
 ### Release Note 格式
 
 ```
-🚀 版本更新: v1.2.10 → v1.2.11
-
-📝 更新内容:
-  • 添加了新功能 A
-  • 修复了 bug B
-  • 优化了性能 C
-  ... 以及其他 5 个更新
+v1.4.18: fix deps pin (+7)
 ```
 
 ## 手动触发
@@ -108,7 +102,7 @@ No new commits since last deployment
 
 ### Q: 如何初始化 `last-deployed` tag？
 
-A: 首次使用时，如果没有 `last-deployed` tag，插件会获取最近的 10 个 commits 并发布。之后会自动创建 tag。
+A: 首次使用时，用发布脚本创建带 message 的 annotated tag。不要直接手工 `git tag`，否则后续 release note 没有稳定的主输入。
 
 ### Q: GitHub Token 权限不足？
 
@@ -127,7 +121,7 @@ curl http://127.0.0.1:3000/get_login_info
 
 ### Q: 如何自定义 release note 格式？
 
-A: 修改 `__init__.py` 中的 `format_release_note()` 函数。
+A: 修改 `__init__.py` 中的 `format_release_note()` 函数，但发布侧 tag message 仍需先由脚本生成并控制在 50 字符内。
 
 ## CI/CD 集成
 

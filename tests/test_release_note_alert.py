@@ -154,6 +154,24 @@ async def test_publish_release_note_uses_call_api(release_note_module, monkeypat
     assert fake_bot.calls == [("set_self_longnick", {"longNick": "hello"})]
 
 
+def test_format_release_note_truncates_to_limit(release_note_module):
+    result = release_note_module.format_release_note(
+        "v1.4.18",
+        "This is a very long deploy tag message that should be truncated",
+        12,
+    )
+
+    assert len(result) <= release_note_module.MAX_LONGNICK_LENGTH
+    assert result.startswith("v1.4.18:")
+    assert result.endswith("(+12)")
+
+
+def test_format_release_note_normalizes_whitespace(release_note_module):
+    result = release_note_module.format_release_note("v1.4.18", "  deploy   tag   message  ", 1)
+
+    assert result == "v1.4.18: deploy tag message (+1)"
+
+
 @pytest.mark.asyncio
 async def test_publish_release_note_treats_failed_retcode_as_failure(
     release_note_module, monkeypatch
@@ -187,11 +205,11 @@ async def test_check_and_publish_release_note_updates_tag_even_if_publish_fails(
             return "last-sha"
         return None
 
-    async def fake_get_commits_between(base_sha, head_sha):
-        return [{"commit": {"message": "feat: example"}}]
+    async def fake_get_commit_count_between(base_sha, head_sha):
+        return 7
 
-    async def fake_get_version_tags_at_commit(commit_sha: str):
-        return ["v1.3.10"]
+    async def fake_get_tag_message(tag_name: str):
+        return "deploy tag message"
 
     async def fake_publish_release_note(_release_note: str):
         return False
@@ -205,12 +223,12 @@ async def test_check_and_publish_release_note_updates_tag_even_if_publish_fails(
 
     monkeypatch.setattr(release_note_module, "get_current_version", fake_get_current_version)
     monkeypatch.setattr(release_note_module, "get_tag_commit_sha", fake_get_tag_commit_sha)
-    monkeypatch.setattr(release_note_module, "get_commits_between", fake_get_commits_between)
     monkeypatch.setattr(
         release_note_module,
-        "get_version_tags_at_commit",
-        fake_get_version_tags_at_commit,
+        "get_commit_count_between",
+        fake_get_commit_count_between,
     )
+    monkeypatch.setattr(release_note_module, "get_tag_message", fake_get_tag_message)
     monkeypatch.setattr(release_note_module, "publish_release_note", fake_publish_release_note)
     monkeypatch.setattr(release_note_module, "get_github_token", fake_get_github_token)
     monkeypatch.setattr(release_note_module, "update_tag", fake_update_tag)
