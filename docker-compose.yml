@@ -24,7 +24,7 @@ services:
 
   nonebot:
     build: .
-    image: trytodupe/ttd-bot:${VERSION:-latest}
+    image: ghcr.io/trytodupe/ttd-bot:${VERSION:-latest}
     ports:
       - "8901:8901"
     environment:
