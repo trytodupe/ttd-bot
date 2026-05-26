@@ -64,6 +64,8 @@ _DOWNLOAD_HEADERS = {
     ),
 }
 _APK_MIME = "application/vnd.android.package-archive"
+_GENERIC_BINARY_MIME = "application/octet-stream"
+_ZIP_FILE_SIGNATURE = b"PK\x03\x04"
 _FILENAME_RE = re.compile(r'^Clash of Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
@@ -284,9 +286,25 @@ def _decode_content_disposition_filename(header_value: str | None) -> str | None
     return None
 
 
-def _is_valid_apk_response(response: httpx.Response) -> bool:
-    content_type = response.headers.get("Content-Type", "")
-    return response.status_code == 200 and _APK_MIME in content_type
+def _normalize_content_type(header_value: str | None) -> str:
+    return header_value.partition(";")[0].strip().lower()
+
+
+def _is_expected_apk_content_type(content_type: str) -> bool:
+    normalized_content_type = _normalize_content_type(content_type)
+    return normalized_content_type in {_APK_MIME, _GENERIC_BINARY_MIME}
+
+
+def _should_validate_apk_magic(content_type: str) -> bool:
+    return _normalize_content_type(content_type) == _GENERIC_BINARY_MIME
+
+
+def _is_apk_filename(filename: str | None) -> bool:
+    return bool(filename) and filename.lower().endswith(".apk")
+
+
+def _looks_like_zip_archive(header_bytes: bytes) -> bool:
+    return header_bytes.startswith(_ZIP_FILE_SIGNATURE)
 
 
 def _build_http_client() -> httpx.AsyncClient:
@@ -310,26 +328,45 @@ async def _fetch_latest_version(client: httpx.AsyncClient) -> CocVersion | None:
 async def _download_latest_apk(client: httpx.AsyncClient, shared_dir: Path) -> DownloadedApk:
     async with client.stream("GET", _DOWNLOAD_URL, headers=_DOWNLOAD_HEADERS) as response:
         response.raise_for_status()
-        if not _is_valid_apk_response(response):
-            raise RuntimeError(
-                "Unexpected download response: "
-                f"status={response.status_code}, content-type={response.headers.get('Content-Type', '')}"
-            )
-
         filename = _decode_content_disposition_filename(
             response.headers.get("Content-Disposition")
         )
         if not filename:
             raise RuntimeError("Missing Content-Disposition filename in download response")
+        if not _is_apk_filename(filename):
+            raise RuntimeError(f"Unexpected download filename: {filename}")
+
+        content_type = response.headers.get("Content-Type", "")
+        if response.status_code != 200 or not _is_expected_apk_content_type(content_type):
+            raise RuntimeError(
+                "Unexpected download response: "
+                f"status={response.status_code}, content-type={content_type}"
+            )
 
         target_path = shared_dir / filename
         temp_path = shared_dir / f".{filename}.part"
         temp_path.unlink(missing_ok=True)
+        header_bytes = bytearray()
+        should_validate_magic = _should_validate_apk_magic(content_type)
 
-        with temp_path.open("wb") as handle:
-            async for chunk in response.aiter_bytes():
-                if chunk:
+        try:
+            with temp_path.open("wb") as handle:
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    if should_validate_magic and len(header_bytes) < len(_ZIP_FILE_SIGNATURE):
+                        missing_bytes = len(_ZIP_FILE_SIGNATURE) - len(header_bytes)
+                        header_bytes.extend(chunk[:missing_bytes])
                     handle.write(chunk)
+
+            if should_validate_magic and not _looks_like_zip_archive(bytes(header_bytes)):
+                raise RuntimeError(
+                    "Unexpected APK payload for generic binary response: "
+                    f"filename={filename}, content-type={content_type}"
+                )
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
 
         temp_path.replace(target_path)
         return DownloadedApk(filename=filename, path=target_path)

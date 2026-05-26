@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import nonebot
 import pytest
 
@@ -91,6 +92,22 @@ def test_decode_content_disposition_filename(coc_apk_checker_module):
         module._decode_content_disposition_filename(header)
         == "Clash of Clans_18.200.19_APKPure.apk"
     )
+
+
+def test_is_expected_apk_content_type_accepts_vendor_and_generic_binary(coc_apk_checker_module):
+    module = coc_apk_checker_module
+
+    assert module._is_expected_apk_content_type("application/vnd.android.package-archive")
+    assert module._is_expected_apk_content_type("application/octet-stream")
+    assert module._is_expected_apk_content_type("application/octet-stream; charset=binary")
+    assert not module._is_expected_apk_content_type("text/html")
+
+
+def test_looks_like_zip_archive(coc_apk_checker_module):
+    module = coc_apk_checker_module
+
+    assert module._looks_like_zip_archive(b"PK\x03\x04rest")
+    assert not module._looks_like_zip_archive(b"not-zip")
 
 
 def test_extract_upload_error(coc_apk_checker_module):
@@ -348,6 +365,52 @@ class FakeBot:
         return {"status": "ok"}
 
 
+class FakeStreamResponse:
+    def __init__(
+        self,
+        *,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+        chunks: list[bytes] | None = None,
+    ):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._chunks = chunks or []
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            request = httpx.Request("GET", "https://example.invalid/apk")
+            response = httpx.Response(
+                self.status_code,
+                headers=self.headers,
+                request=request,
+            )
+            raise httpx.HTTPStatusError("download failed", request=request, response=response)
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+
+class FakeStreamContext:
+    def __init__(self, response: FakeStreamResponse):
+        self._response = response
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class FakeHttpClient:
+    def __init__(self, response: FakeStreamResponse):
+        self._response = response
+
+    def stream(self, method: str, url: str, headers: dict[str, str]):
+        return FakeStreamContext(self._response)
+
+
 @pytest.mark.asyncio
 async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
     coc_apk_checker_module, monkeypatch, tmp_path
@@ -434,3 +497,43 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
     await module.check_coc_apk_update()
 
     assert "coc-checker-check-failed" not in module._FAILURE_COUNT_BY_KEY
+
+
+@pytest.mark.asyncio
+async def test_download_latest_apk_accepts_octet_stream_with_apk_filename(
+    coc_apk_checker_module, tmp_path
+):
+    module = coc_apk_checker_module
+    response = FakeStreamResponse(
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": 'attachment; filename="Clash of Clans_18.367.1_APKPure.apk"',
+        },
+        chunks=[b"PK\x03\x04apk-data"],
+    )
+    client = FakeHttpClient(response)
+
+    downloaded = await module._download_latest_apk(client, tmp_path)
+
+    assert downloaded.filename == "Clash of Clans_18.367.1_APKPure.apk"
+    assert downloaded.path.read_bytes() == b"PK\x03\x04apk-data"
+
+
+@pytest.mark.asyncio
+async def test_download_latest_apk_rejects_generic_binary_without_zip_signature(
+    coc_apk_checker_module, tmp_path
+):
+    module = coc_apk_checker_module
+    response = FakeStreamResponse(
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": 'attachment; filename="Clash of Clans_18.367.1_APKPure.apk"',
+        },
+        chunks=[b"not-an-apk"],
+    )
+    client = FakeHttpClient(response)
+
+    with pytest.raises(RuntimeError, match="Unexpected APK payload for generic binary response"):
+        await module._download_latest_apk(client, tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
