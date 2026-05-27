@@ -81,6 +81,18 @@ def test_extract_version_name_from_filename(coc_apk_checker_module):
         )
         == "18.200.19"
     )
+    assert (
+        module._extract_version_name_from_filename(
+            "Clash_of_Clans_18.200.19_APKPure.apk"
+        )
+        == "18.200.19"
+    )
+    assert (
+        module._extract_version_name_from_filename(
+            "Clash+of+Clans_18.367.1_APKPure.apk"
+        )
+        == "18.367.1"
+    )
     assert module._extract_version_name_from_filename("other.apk") is None
 
 
@@ -90,7 +102,12 @@ def test_decode_content_disposition_filename(coc_apk_checker_module):
     header = 'attachment; filename="Clash of Clans_18.200.19_APKPure.apk"'
     assert (
         module._decode_content_disposition_filename(header)
-        == "Clash of Clans_18.200.19_APKPure.apk"
+        == "Clash_of_Clans_18.200.19_APKPure.apk"
+    )
+    plus_header = 'attachment; filename="Clash+of+Clans_18.367.1_APKPure.apk"'
+    assert (
+        module._decode_content_disposition_filename(plus_header)
+        == "Clash_of_Clans_18.367.1_APKPure.apk"
     )
 
 
@@ -206,8 +223,63 @@ async def test_check_coc_apk_update_skips_when_latest_file_exists(
     async def fake_download_latest_apk(_client, _shared_dir):
         download_calls.append(True)
         return module.DownloadedApk(
-            filename="Clash of Clans_18.200.19_APKPure.apk",
-            path=shared_dir / "Clash of Clans_18.200.19_APKPure.apk",
+            filename="Clash_of_Clans_18.200.19_APKPure.apk",
+            path=shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk",
+        )
+
+    async def fake_upload_group_file(_group_id, _apk):
+        upload_calls.append(True)
+        return module.UploadResult(ok=True, detail="")
+
+    async def fake_send_group_message(group_id, message):
+        sent_messages.append((group_id, message))
+
+    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
+    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
+    monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
+
+    await module.check_coc_apk_update()
+
+    assert sent_messages == []
+    assert download_calls == []
+    assert upload_calls == []
+
+
+@pytest.mark.asyncio
+async def test_check_coc_apk_update_skips_when_plus_named_file_exists(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    (shared_dir / "Clash+of+Clans_18.367.1_APKPure.apk").write_bytes(b"apk")
+
+    sent_messages = []
+    download_calls = []
+    upload_calls = []
+
+    monkeypatch.setattr(module, "_should_enable_checker", lambda: True)
+    monkeypatch.setattr(module, "_shared_dir", lambda: shared_dir)
+    monkeypatch.setattr(
+        module.plugin_config,
+        "coc_checker_group_id",
+        607572668,
+        raising=False,
+    )
+
+    async def fake_fetch_latest_version(_client):
+        return module.CocVersion(
+            version_name="18.367.1",
+            version_code="180367002",
+            update_date="2026-05-26T08:12:10+07:00",
+        )
+
+    async def fake_download_latest_apk(_client, _shared_dir):
+        download_calls.append(True)
+        return module.DownloadedApk(
+            filename="Clash_of_Clans_18.367.1_APKPure.apk",
+            path=shared_dir / "Clash_of_Clans_18.367.1_APKPure.apk",
         )
 
     async def fake_upload_group_file(_group_id, _apk):
@@ -255,8 +327,8 @@ async def test_check_coc_apk_update_sends_version_message_and_uploads(
         update_date="2026-03-20T11:44:56+07:00",
     )
     downloaded = module.DownloadedApk(
-        filename="Clash of Clans_18.200.19_APKPure.apk",
-        path=shared_dir / "Clash of Clans_18.200.19_APKPure.apk",
+        filename="Clash_of_Clans_18.200.19_APKPure.apk",
+        path=shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk",
     )
 
     async def fake_fetch_latest_version(_client):
@@ -321,7 +393,7 @@ async def test_check_coc_apk_update_reports_upload_failure(
         return version
 
     async def fake_download_latest_apk(_client, _shared_dir):
-        target = shared_dir / "Clash of Clans_18.200.19_APKPure.apk"
+        target = shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk"
         target.write_bytes(b"apk")
         return module.DownloadedApk(filename=target.name, path=target)
 
@@ -478,7 +550,7 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
         )
 
     async def fake_download_latest_apk(_client, _shared_dir):
-        target = shared_dir / "Clash of Clans_18.200.19_APKPure.apk"
+        target = shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk"
         target.write_bytes(b"apk")
         return module.DownloadedApk(filename=target.name, path=target)
 
@@ -515,8 +587,28 @@ async def test_download_latest_apk_accepts_octet_stream_with_apk_filename(
 
     downloaded = await module._download_latest_apk(client, tmp_path)
 
-    assert downloaded.filename == "Clash of Clans_18.367.1_APKPure.apk"
+    assert downloaded.filename == "Clash_of_Clans_18.367.1_APKPure.apk"
     assert downloaded.path.read_bytes() == b"PK\x03\x04apk-data"
+
+
+@pytest.mark.asyncio
+async def test_download_latest_apk_normalizes_plus_named_filename(
+    coc_apk_checker_module, tmp_path
+):
+    module = coc_apk_checker_module
+    response = FakeStreamResponse(
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": 'attachment; filename="Clash+of+Clans_18.367.1_APKPure.apk"',
+        },
+        chunks=[b"PK\x03\x04apk-data"],
+    )
+    client = FakeHttpClient(response)
+
+    downloaded = await module._download_latest_apk(client, tmp_path)
+
+    assert downloaded.filename == "Clash_of_Clans_18.367.1_APKPure.apk"
+    assert downloaded.path.name == "Clash_of_Clans_18.367.1_APKPure.apk"
 
 
 @pytest.mark.asyncio

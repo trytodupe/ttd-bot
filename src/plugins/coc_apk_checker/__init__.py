@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import unquote
+from urllib.parse import unquote, unquote_plus
 
 import httpx
 from nonebot import get_bots, get_driver, get_plugin_config, require
@@ -66,7 +66,7 @@ _DOWNLOAD_HEADERS = {
 _APK_MIME = "application/vnd.android.package-archive"
 _GENERIC_BINARY_MIME = "application/octet-stream"
 _ZIP_FILE_SIGNATURE = b"PK\x03\x04"
-_FILENAME_RE = re.compile(r'^Clash of Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
+_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
@@ -209,8 +209,14 @@ def _candidate_apk_files(shared_dir: Path) -> list[Path]:
     )
 
 
+def _normalize_apk_filename(filename: str) -> str:
+    normalized_filename = unquote_plus(filename.strip())
+    return re.sub(r"^Clash[ _]+of[ _]+Clans_", "Clash_of_Clans_", normalized_filename)
+
+
 def _extract_version_name_from_filename(filename: str) -> str | None:
-    match = _FILENAME_RE.fullmatch(filename)
+    normalized_filename = _normalize_apk_filename(filename)
+    match = _FILENAME_RE.fullmatch(normalized_filename)
     if not match:
         return None
     return match.group("version_name")
@@ -279,10 +285,10 @@ def _decode_content_disposition_filename(header_value: str | None) -> str | None
             try:
                 _, _, encoded_name = value.split("'", 2)
             except ValueError:
-                return value
-            return unquote(encoded_name)
+                return _normalize_apk_filename(value)
+            return _normalize_apk_filename(unquote(encoded_name))
         if normalized_key == "filename":
-            return value
+            return _normalize_apk_filename(value)
     return None
 
 
