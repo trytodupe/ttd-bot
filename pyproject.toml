@@ -23,7 +23,8 @@ dependencies = [
     "nonebot-plugin-auto-sendlike>=0.0.12",
     "nonebot-plugin-authrespond>=1.8",
     "nonebot-plugin-deer-pipe @ git+https://github.com/trytodupe/nonebot-plugin-deer-pipe@46fd3c6aab020474388b62c49af6c4028cf5dd79",
-    # "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@1d94e943934beac15fcc532af252afb512a9dbc9",
+    "nonebot-plugin-learning-chat @ git+https://github.com/trytodupe/nonebot-plugin-learning-chat@721c777a0f05b91a3492891fda3845cc383c9f97",
+    "nonebot-plugin-tortoise-orm @ git+https://github.com/trytodupe/nonebot-plugin-tortoise-orm@135b31627a195811fd3030faeb9e5e5911fc2c79",
     "nonebot-plugin-auto-enter-group", # unused plugin
     "nonebot-plugin-analysis-bilibili>=2.8.1",
     "mcstatus>=11.1.0",
@@ -35,7 +36,7 @@ dependencies = [
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
     "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@dd62785",
-    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@52c593470b98cee8c1c6edc35d8cea97d2faaf0a",
+    # "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@52c593470b98cee8c1c6edc35d8cea97d2faaf0a",
 ]
 
 [tool.nonebot]
@@ -55,14 +56,14 @@ plugins = [
     "nonebot-plugin-auto-sendlike",
     "nonebot_plugin_authrespond",
     "nonebot_plugin_deer_pipe",
-    # "nonebot_plugin_learning_chat",
+    "nonebot_plugin_learning_chat",
     "nonebot_plugin_auto_enter_group",
     # "nonebot_plugin_analysis_bilibili",
     "nonebot_plugin_groupmate_waifu",
     # "nonebot_plugin_essence_message",
     "nonebot_plugin_steam_game_status",
     "nonebot_plugin_parser",
-    "nonebot_plugin_moellmchats",
+    # "nonebot_plugin_moellmchats",
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
