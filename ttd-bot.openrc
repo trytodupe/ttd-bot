@@ -1,0 +1,32 @@
+#!/sbin/openrc-run
+
+description="ttd-bot - NoneBot QQ bot"
+pidfile="/run/${RC_SVCNAME}.pid"
+command="/home/ttd/deploy/ttd-bot/.venv/bin/python"
+command_args="/home/ttd/deploy/ttd-bot/bot.py"
+start_stop_daemon_args="--background --make-pidfile --user ttd --stdout /home/ttd/deploy/ttd-bot/data/bot.log --stderr /home/ttd/deploy/ttd-bot/data/bot.log"
+retry="TERM/30/KILL/10"
+
+depend() {
+	need docker
+}
+
+start_pre() {
+	ebegin "Waiting for postgres"
+	local i=0
+	while [ $i -lt 30 ]; do
+		docker exec ttd-bot-postgres-1 pg_isready -U ttd_bot -d ttd_bot >/dev/null 2>&1 && break
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ $i -ge 30 ]; then
+		eend 1 "postgres not ready after 30s"
+		return 1
+	fi
+	eend 0
+
+	ebegin "Running DB migrations"
+	cd /home/ttd/deploy/ttd-bot
+	su -s /bin/sh ttd -c "cd /home/ttd/deploy/ttd-bot && .venv/bin/nb orm upgrade" >/dev/null 2>&1
+	eend $?
+}
