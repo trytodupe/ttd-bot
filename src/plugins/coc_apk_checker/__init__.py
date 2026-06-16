@@ -3,23 +3,22 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
-import logging
 import os
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import unquote, unquote_plus
+from urllib.parse import unquote_plus
 
 import httpx
-from nonebot import get_bots, get_driver, get_plugin_config, require
+from nonebot import get_bots, get_driver, get_plugin_config, logger as nonebot_logger, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.plugin import PluginMetadata
 
 from .config import Config
+from .sources import CocVersion, DownloadedApk, UploadResult, create_source
 
-logger = logging.getLogger(__name__)
+logger = nonebot_logger
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -27,46 +26,14 @@ from nonebot_plugin_apscheduler import scheduler
 __plugin_meta__ = PluginMetadata(
     name="coc-apk-checker",
     description="Check Clash of Clans APK updates and upload new APK files from /shared.",
-    usage="Runs automatically every 30 minutes inside Docker when /shared is available.",
+    usage="Runs automatically every 30 minutes when /shared is available.",
     config=Config,
 )
 
 plugin_config = get_plugin_config(Config)
-_HISTORY_URL = (
-    "https://tapi.pureapk.com/v3/get_app_his_version"
-    "?package_name=com.supercell.clashofclans&hl=en"
-)
-_DOWNLOAD_URL = "https://d.apkpure.com/b/APK/com.supercell.clashofclans?version=latest"
-_HISTORY_HEADERS = {
-    "Ual-Access-Businessid": "projecta",
-    "Ual-Access-ProjectA": '{"device_info":{"os_ver":"35"}}',
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Origin": "https://apkpure.com",
-    "Referer": "https://apkpure.com/",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-    ),
-}
-_DOWNLOAD_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://apkpure.com/",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "cross-site",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-    ),
-}
-_APK_MIME = "application/vnd.android.package-archive"
-_GENERIC_BINARY_MIME = "application/octet-stream"
-_ZIP_FILE_SIGNATURE = b"PK\x03\x04"
-_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_APKPure\.apk$')
+_APK_SOURCE = create_source(plugin_config.coc_checker_source)
+
+_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_[^/]+\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
@@ -75,30 +42,9 @@ _ALERT_FAILURE_THRESHOLD = 5
 driver = get_driver()
 
 
-@dataclass(frozen=True)
-class CocVersion:
-    version_name: str
-    version_code: str
-    update_date: str
-
-    @property
-    def version_code_int(self) -> int:
-        try:
-            return int(self.version_code)
-        except (TypeError, ValueError):
-            return -1
-
-
-@dataclass(frozen=True)
-class DownloadedApk:
-    filename: str
-    path: Path
-
-
-@dataclass(frozen=True)
-class UploadResult:
-    ok: bool
-    detail: str
+# ---------------------------------------------------------------------------
+# alert / notification helpers
+# ---------------------------------------------------------------------------
 
 
 def _parse_superusers(value: str) -> list[str]:
@@ -157,10 +103,10 @@ async def _send_private_alert(message: str) -> bool:
 
     try:
         await bot.call_api("send_private_msg", user_id=target_user_id, message=message)
-        logger.info("Sent CoC checker alert to superuser %s", target_user_id)
+        logger.info("Sent CoC checker alert to superuser {}", target_user_id)
         return True
     except Exception as exc:
-        logger.warning("Failed to send CoC checker alert: %s", exc)
+        logger.warning("Failed to send CoC checker alert: {}", exc)
         return False
 
 
@@ -169,7 +115,7 @@ async def _maybe_alert_after_failure(key: str, message: str) -> bool:
     _FAILURE_COUNT_BY_KEY[key] = failure_count
     if failure_count < _ALERT_FAILURE_THRESHOLD:
         logger.warning(
-            "CoC checker failure %s/%s for %s",
+            "CoC checker failure {}/{} for {}",
             failure_count,
             _ALERT_FAILURE_THRESHOLD,
             key,
@@ -184,8 +130,9 @@ def _reset_failure_count(key: str) -> None:
     _FAILURE_COUNT_BY_KEY.pop(key, None)
 
 
-def _is_running_in_docker() -> bool:
-    return Path("/.dockerenv").exists() or os.getenv("KUBERNETES_SERVICE_HOST") is not None
+# ---------------------------------------------------------------------------
+# filesystem / filename helpers
+# ---------------------------------------------------------------------------
 
 
 def _shared_dir() -> Path:
@@ -194,7 +141,7 @@ def _shared_dir() -> Path:
 
 def _should_enable_checker() -> bool:
     shared_dir = _shared_dir()
-    return _is_running_in_docker() and shared_dir.is_dir()
+    return shared_dir.is_dir()
 
 
 def _candidate_apk_files(shared_dir: Path) -> list[Path]:
@@ -237,80 +184,9 @@ def _has_local_version_name(shared_dir: Path, version_name: str) -> bool:
     return False
 
 
-def _parse_version_row(item: Any) -> CocVersion | None:
-    if not isinstance(item, dict):
-        return None
-
-    asset = item.get("asset")
-    if not isinstance(asset, dict) or asset.get("type") != "APK":
-        return None
-
-    version_name = str(item.get("version_name", "")).strip()
-    version_code = str(item.get("version_code", "")).strip()
-    update_date = str(item.get("update_date", "")).strip()
-    if not version_name or not version_code or not update_date:
-        return None
-
-    return CocVersion(
-        version_name=version_name,
-        version_code=version_code,
-        update_date=update_date,
-    )
-
-
-def _select_latest_version(payload: dict[str, Any]) -> CocVersion | None:
-    version_list = payload.get("version_list")
-    if not isinstance(version_list, list):
-        return None
-
-    versions = [version for item in version_list if (version := _parse_version_row(item)) is not None]
-    if not versions:
-        return None
-
-    return max(versions, key=lambda version: (version.version_code_int, version.update_date))
-
-
-def _decode_content_disposition_filename(header_value: str | None) -> str | None:
-    if not header_value:
-        return None
-
-    for part in header_value.split(";"):
-        key, separator, raw_value = part.strip().partition("=")
-        if not separator:
-            continue
-
-        normalized_key = key.lower()
-        value = raw_value.strip().strip('"')
-        if normalized_key == "filename*":
-            try:
-                _, _, encoded_name = value.split("'", 2)
-            except ValueError:
-                return _normalize_apk_filename(value)
-            return _normalize_apk_filename(unquote(encoded_name))
-        if normalized_key == "filename":
-            return _normalize_apk_filename(value)
-    return None
-
-
-def _normalize_content_type(header_value: str | None) -> str:
-    return header_value.partition(";")[0].strip().lower()
-
-
-def _is_expected_apk_content_type(content_type: str) -> bool:
-    normalized_content_type = _normalize_content_type(content_type)
-    return normalized_content_type in {_APK_MIME, _GENERIC_BINARY_MIME}
-
-
-def _should_validate_apk_magic(content_type: str) -> bool:
-    return _normalize_content_type(content_type) == _GENERIC_BINARY_MIME
-
-
-def _is_apk_filename(filename: str | None) -> bool:
-    return bool(filename) and filename.lower().endswith(".apk")
-
-
-def _looks_like_zip_archive(header_bytes: bytes) -> bool:
-    return header_bytes.startswith(_ZIP_FILE_SIGNATURE)
+# ---------------------------------------------------------------------------
+# bot / messaging helpers
+# ---------------------------------------------------------------------------
 
 
 def _build_http_client() -> httpx.AsyncClient:
@@ -322,60 +198,6 @@ def _build_http_client() -> httpx.AsyncClient:
         proxy=proxy,
         trust_env=True,
     )
-
-
-async def _fetch_latest_version(client: httpx.AsyncClient) -> CocVersion | None:
-    response = await client.get(_HISTORY_URL, headers=_HISTORY_HEADERS)
-    response.raise_for_status()
-    payload = cast(dict[str, Any], response.json())
-    return _select_latest_version(payload)
-
-
-async def _download_latest_apk(client: httpx.AsyncClient, shared_dir: Path) -> DownloadedApk:
-    async with client.stream("GET", _DOWNLOAD_URL, headers=_DOWNLOAD_HEADERS) as response:
-        response.raise_for_status()
-        filename = _decode_content_disposition_filename(
-            response.headers.get("Content-Disposition")
-        )
-        if not filename:
-            raise RuntimeError("Missing Content-Disposition filename in download response")
-        if not _is_apk_filename(filename):
-            raise RuntimeError(f"Unexpected download filename: {filename}")
-
-        content_type = response.headers.get("Content-Type", "")
-        if response.status_code != 200 or not _is_expected_apk_content_type(content_type):
-            raise RuntimeError(
-                "Unexpected download response: "
-                f"status={response.status_code}, content-type={content_type}"
-            )
-
-        target_path = shared_dir / filename
-        temp_path = shared_dir / f".{filename}.part"
-        temp_path.unlink(missing_ok=True)
-        header_bytes = bytearray()
-        should_validate_magic = _should_validate_apk_magic(content_type)
-
-        try:
-            with temp_path.open("wb") as handle:
-                async for chunk in response.aiter_bytes():
-                    if not chunk:
-                        continue
-                    if should_validate_magic and len(header_bytes) < len(_ZIP_FILE_SIGNATURE):
-                        missing_bytes = len(_ZIP_FILE_SIGNATURE) - len(header_bytes)
-                        header_bytes.extend(chunk[:missing_bytes])
-                    handle.write(chunk)
-
-            if should_validate_magic and not _looks_like_zip_archive(bytes(header_bytes)):
-                raise RuntimeError(
-                    "Unexpected APK payload for generic binary response: "
-                    f"filename={filename}, content-type={content_type}"
-                )
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
-
-        temp_path.replace(target_path)
-        return DownloadedApk(filename=filename, path=target_path)
 
 
 def _select_bot() -> Bot | None:
@@ -393,7 +215,7 @@ async def _send_group_message(group_id: int, message: str) -> None:
     try:
         await bot.call_api("send_group_msg", group_id=group_id, message=message)
     except Exception as exc:
-        logger.warning("Failed to send CoC group message: %s", exc)
+        logger.warning("Failed to send CoC group message: {}", exc)
 
 
 def _format_version_message(version: CocVersion) -> str:
@@ -435,7 +257,7 @@ async def _upload_group_file(group_id: int, apk: DownloadedApk) -> UploadResult:
         result = await bot.call_api(
             "upload_group_file",
             group_id=group_id,
-            file=apk.path.resolve().as_uri(),
+            file=str(apk.path),
             name=apk.filename,
         )
     except Exception as exc:
@@ -451,6 +273,11 @@ async def _announce_upload_failure(group_id: int, detail: str) -> None:
     await _send_group_message(group_id, f"[CoC APK] Upload failed: {detail}")
 
 
+# ---------------------------------------------------------------------------
+# main check logic
+# ---------------------------------------------------------------------------
+
+
 async def check_coc_apk_update() -> None:
     if not _should_enable_checker():
         return
@@ -460,19 +287,19 @@ async def check_coc_apk_update() -> None:
         shared_dir.mkdir(parents=True, exist_ok=True)
         try:
             async with _build_http_client() as client:
-                latest_version = await _fetch_latest_version(client)
+                latest_version = await _APK_SOURCE.get_latest_version(client)
                 if latest_version is None:
                     logger.warning("CoC checker did not find any APK versions")
                     return
 
                 local_version_name = _latest_local_version_name(shared_dir)
                 if _has_local_version_name(shared_dir, latest_version.version_name):
-                    logger.debug("CoC APK already up to date: %s", local_version_name)
+                    logger.info("CoC APK already up to date: {}", local_version_name)
                     _reset_failure_count("coc-checker-check-failed")
                     return
 
                 logger.info(
-                    "Detected new CoC APK version: %s (local=%s)",
+                    "Detected new CoC APK version: {} (local={})",
                     latest_version.version_name,
                     local_version_name or "none",
                 )
@@ -482,9 +309,9 @@ async def check_coc_apk_update() -> None:
                 )
 
                 try:
-                    downloaded_apk = await _download_latest_apk(client, shared_dir)
+                    downloaded_apk = await _APK_SOURCE.download_apk(client, shared_dir)
                 except Exception as exc:
-                    logger.warning("Failed to download CoC APK: %s", exc)
+                    logger.warning("Failed to download CoC APK: {}", exc)
                     await _announce_upload_failure(
                         int(plugin_config.coc_checker_group_id),
                         f"download error: {type(exc).__name__}: {exc}",
@@ -497,26 +324,31 @@ async def check_coc_apk_update() -> None:
             )
             if upload_result.ok:
                 _reset_failure_count("coc-checker-check-failed")
-                logger.info("Uploaded CoC APK successfully: %s", downloaded_apk.filename)
+                logger.info("Uploaded CoC APK successfully: {}", downloaded_apk.filename)
                 return
 
-            logger.warning("Failed to upload CoC APK: %s", upload_result.detail)
+            logger.warning("Failed to upload CoC APK: {}", upload_result.detail)
             await _announce_upload_failure(
                 int(plugin_config.coc_checker_group_id),
                 upload_result.detail,
             )
         except Exception as exc:
-            logger.exception("CoC APK check failed: %s", exc)
+            logger.opt(exception=True).error("CoC APK check failed: {}", exc)
             await _maybe_alert_after_failure(
                 "coc-checker-check-failed",
                 f"[coc-apk-checker] Scheduled check failed: {type(exc).__name__}: {exc}",
             )
 
 
+# ---------------------------------------------------------------------------
+# lifecycle
+# ---------------------------------------------------------------------------
+
+
 @driver.on_startup
 async def _start_coc_checker() -> None:
     if not _should_enable_checker():
-        logger.info("CoC APK checker disabled because Docker or /shared is unavailable")
+        nonebot_logger.info("CoC APK checker disabled because /shared is unavailable")
         return
 
     scheduler.add_job(
@@ -529,7 +361,7 @@ async def _start_coc_checker() -> None:
         coalesce=True,
         misfire_grace_time=300,
     )
-    logger.info("CoC APK checker scheduled")
+    nonebot_logger.info("CoC APK checker scheduled")
 
 
 @driver.on_shutdown

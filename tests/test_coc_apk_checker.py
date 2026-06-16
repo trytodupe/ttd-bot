@@ -7,6 +7,32 @@ import httpx
 import nonebot
 import pytest
 
+# ---------------------------------------------------------------------------
+# helpers for testing APK sources directly (no NoneBot dependency)
+# ---------------------------------------------------------------------------
+
+
+def _import_sources():
+    """Import sources.py directly without triggering __init__.py's NoneBot init."""
+    import importlib
+
+    sources_dir = (
+        Path(__file__).resolve().parents[1]
+        / "src" / "plugins" / "coc_apk_checker"
+    )
+    sources_dir_text = str(sources_dir)
+    if sources_dir_text not in sys.path:
+        sys.path.insert(0, sources_dir_text)
+
+    if "sources" in sys.modules:
+        return importlib.reload(sys.modules["sources"])
+    return importlib.import_module("sources")
+
+
+# ---------------------------------------------------------------------------
+# module fixture for tests that need the full NoneBot plugin
+# ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def coc_apk_checker_module():
@@ -37,8 +63,14 @@ def coc_apk_checker_module():
     return module
 
 
-def test_select_latest_version_filters_only_apk(coc_apk_checker_module):
-    module = coc_apk_checker_module
+# ---------------------------------------------------------------------------
+# ApkPureSource tests (direct, no NoneBot)
+# ---------------------------------------------------------------------------
+
+
+def test_select_latest_version_filters_only_apk():
+    sources = _import_sources()
+    source = sources.ApkPureSource()
 
     payload = {
         "version_list": [
@@ -63,13 +95,75 @@ def test_select_latest_version_filters_only_apk(coc_apk_checker_module):
         ]
     }
 
-    latest = module._select_latest_version(payload)
+    latest = source._select_latest_version(payload)
 
-    assert latest == module.CocVersion(
+    assert latest == sources.CocVersion(
         version_name="18.200.19",
         version_code="180200020",
         update_date="2026-03-20T11:44:56+07:00",
     )
+
+
+def test_decode_content_disposition_filename():
+    sources = _import_sources()
+    source = sources.ApkPureSource()
+
+    header = 'attachment; filename="Clash of Clans_18.200.19_APKPure.apk"'
+    assert (
+        source._decode_content_disposition_filename(header)
+        == "Clash_of_Clans_18.200.19_APKPure.apk"
+    )
+    plus_header = 'attachment; filename="Clash+of+Clans_18.367.1_APKPure.apk"'
+    assert (
+        source._decode_content_disposition_filename(plus_header)
+        == "Clash_of_Clans_18.367.1_APKPure.apk"
+    )
+
+
+def test_is_expected_apk_content_type_accepts_vendor_and_generic_binary():
+    sources = _import_sources()
+    source = sources.ApkPureSource()
+
+    assert source._is_expected_apk_content_type(
+        "application/vnd.android.package-archive"
+    )
+    assert source._is_expected_apk_content_type("application/octet-stream")
+    assert source._is_expected_apk_content_type(
+        "application/octet-stream; charset=binary"
+    )
+    assert not source._is_expected_apk_content_type("text/html")
+
+
+def test_looks_like_zip_archive():
+    sources = _import_sources()
+
+    assert sources._looks_like_zip_archive(b"PK\x03\x04rest")
+    assert not sources._looks_like_zip_archive(b"not-zip")
+
+
+# ---------------------------------------------------------------------------
+# factory tests
+# ---------------------------------------------------------------------------
+
+
+def test_create_source_returns_correct_type():
+    sources = _import_sources()
+
+    s = sources.create_source("apkcombo")
+    assert isinstance(s, sources.ApkComboSource)
+    assert s.SOURCE_NAME == "apkcombo"
+
+    s2 = sources.create_source("apkpure")
+    assert isinstance(s2, sources.ApkPureSource)
+    assert s2.SOURCE_NAME == "apkpure"
+
+    with pytest.raises(ValueError, match="Unknown APK source"):
+        sources.create_source("invalid")
+
+
+# ---------------------------------------------------------------------------
+# __init__.py tests (need full NoneBot module)
+# ---------------------------------------------------------------------------
 
 
 def test_extract_version_name_from_filename(coc_apk_checker_module):
@@ -93,38 +187,14 @@ def test_extract_version_name_from_filename(coc_apk_checker_module):
         )
         == "18.367.1"
     )
+    # Also works with APKCombo naming
+    assert (
+        module._extract_version_name_from_filename(
+            "Clash of Clans_18.400.2_apkcombo.com.apk"
+        )
+        == "18.400.2"
+    )
     assert module._extract_version_name_from_filename("other.apk") is None
-
-
-def test_decode_content_disposition_filename(coc_apk_checker_module):
-    module = coc_apk_checker_module
-
-    header = 'attachment; filename="Clash of Clans_18.200.19_APKPure.apk"'
-    assert (
-        module._decode_content_disposition_filename(header)
-        == "Clash_of_Clans_18.200.19_APKPure.apk"
-    )
-    plus_header = 'attachment; filename="Clash+of+Clans_18.367.1_APKPure.apk"'
-    assert (
-        module._decode_content_disposition_filename(plus_header)
-        == "Clash_of_Clans_18.367.1_APKPure.apk"
-    )
-
-
-def test_is_expected_apk_content_type_accepts_vendor_and_generic_binary(coc_apk_checker_module):
-    module = coc_apk_checker_module
-
-    assert module._is_expected_apk_content_type("application/vnd.android.package-archive")
-    assert module._is_expected_apk_content_type("application/octet-stream")
-    assert module._is_expected_apk_content_type("application/octet-stream; charset=binary")
-    assert not module._is_expected_apk_content_type("text/html")
-
-
-def test_looks_like_zip_archive(coc_apk_checker_module):
-    module = coc_apk_checker_module
-
-    assert module._looks_like_zip_archive(b"PK\x03\x04rest")
-    assert not module._looks_like_zip_archive(b"not-zip")
 
 
 def test_extract_upload_error(coc_apk_checker_module):
@@ -141,7 +211,12 @@ def test_extract_upload_error(coc_apk_checker_module):
         == "ENOENT: no such file or directory"
     )
     assert module._extract_upload_error({"status": "ok", "retcode": 0}) == ""
-    assert module._extract_upload_error({"file_id": "/10584a2b-9b86-4777-aefa-19655cfee558"}) == ""
+    assert (
+        module._extract_upload_error(
+            {"file_id": "/10584a2b-9b86-4777-aefa-19655cfee558"}
+        )
+        == ""
+    )
     assert (
         module._extract_upload_error(
             {"data": {"file_id": "/78458762-7bf5-4eed-9e2c-30e223e108c9"}}
@@ -150,7 +225,9 @@ def test_extract_upload_error(coc_apk_checker_module):
     )
 
 
-def test_resolve_primary_superuser_prefers_env_order(coc_apk_checker_module, monkeypatch):
+def test_resolve_primary_superuser_prefers_env_order(
+    coc_apk_checker_module, monkeypatch
+):
     module = coc_apk_checker_module
 
     monkeypatch.setenv("SUPERUSERS", '["1669790626", "1777777777"]')
@@ -191,6 +268,11 @@ def test_build_http_client_uses_configured_proxy(coc_apk_checker_module, monkeyp
     assert captured["trust_env"] is True
 
 
+# ---------------------------------------------------------------------------
+# check_coc_apk_update tests
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_check_coc_apk_update_skips_when_latest_file_exists(
     coc_apk_checker_module, monkeypatch, tmp_path
@@ -213,14 +295,14 @@ async def test_check_coc_apk_update_skips_when_latest_file_exists(
         raising=False,
     )
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         return module.CocVersion(
             version_name="18.200.19",
             version_code="180200020",
             update_date="2026-03-20T11:44:56+07:00",
         )
 
-    async def fake_download_latest_apk(_client, _shared_dir):
+    async def fake_download_apk(_client, _shared_dir):
         download_calls.append(True)
         return module.DownloadedApk(
             filename="Clash_of_Clans_18.200.19_APKPure.apk",
@@ -234,8 +316,10 @@ async def test_check_coc_apk_update_skips_when_latest_file_exists(
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
 
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
-    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module._APK_SOURCE, "download_apk", fake_download_apk)
     monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
     monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
 
@@ -268,14 +352,14 @@ async def test_check_coc_apk_update_skips_when_plus_named_file_exists(
         raising=False,
     )
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         return module.CocVersion(
             version_name="18.367.1",
             version_code="180367002",
             update_date="2026-05-26T08:12:10+07:00",
         )
 
-    async def fake_download_latest_apk(_client, _shared_dir):
+    async def fake_download_apk(_client, _shared_dir):
         download_calls.append(True)
         return module.DownloadedApk(
             filename="Clash_of_Clans_18.367.1_APKPure.apk",
@@ -289,8 +373,10 @@ async def test_check_coc_apk_update_skips_when_plus_named_file_exists(
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
 
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
-    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module._APK_SOURCE, "download_apk", fake_download_apk)
     monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
     monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
 
@@ -331,10 +417,10 @@ async def test_check_coc_apk_update_sends_version_message_and_uploads(
         path=shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk",
     )
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         return version
 
-    async def fake_download_latest_apk(_client, _shared_dir):
+    async def fake_download_apk(_client, _shared_dir):
         downloaded.path.write_bytes(b"apk")
         return downloaded
 
@@ -345,8 +431,10 @@ async def test_check_coc_apk_update_sends_version_message_and_uploads(
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
 
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
-    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module._APK_SOURCE, "download_apk", fake_download_apk)
     monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
     monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
 
@@ -389,10 +477,10 @@ async def test_check_coc_apk_update_reports_upload_failure(
         update_date="2026-03-20T11:44:56+07:00",
     )
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         return version
 
-    async def fake_download_latest_apk(_client, _shared_dir):
+    async def fake_download_apk(_client, _shared_dir):
         target = shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk"
         target.write_bytes(b"apk")
         return module.DownloadedApk(filename=target.name, path=target)
@@ -406,8 +494,10 @@ async def test_check_coc_apk_update_reports_upload_failure(
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
 
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
-    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module._APK_SOURCE, "download_apk", fake_download_apk)
     monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
     monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
 
@@ -426,6 +516,11 @@ async def test_check_coc_apk_update_reports_upload_failure(
             "[CoC APK] Upload failed: ENOENT: no such file or directory, open '/shared/missing.apk'",
         ),
     ]
+
+
+# ---------------------------------------------------------------------------
+# error / alert tests
+# ---------------------------------------------------------------------------
 
 
 class FakeBot:
@@ -457,7 +552,9 @@ class FakeStreamResponse:
                 headers=self.headers,
                 request=request,
             )
-            raise httpx.HTTPStatusError("download failed", request=request, response=response)
+            raise httpx.HTTPStatusError(
+                "download failed", request=request, response=response
+            )
 
     async def aiter_bytes(self):
         for chunk in self._chunks:
@@ -503,10 +600,12 @@ async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
     )
     monkeypatch.setattr(module, "get_bots", lambda: {"bot": fake_bot})
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         raise module.httpx.ConnectError("proxy connect failed")
 
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
 
     for _ in range(4):
         await module.check_coc_apk_update()
@@ -520,7 +619,10 @@ async def test_check_coc_apk_update_catches_error_and_alerts_superuser(
     api, payload = fake_bot.calls[0]
     assert api == "send_private_msg"
     assert payload["user_id"] == 1669790626
-    assert "Scheduled check failed: ConnectError: proxy connect failed" in payload["message"]
+    assert (
+        "Scheduled check failed: ConnectError: proxy connect failed"
+        in payload["message"]
+    )
     assert module._FAILURE_COUNT_BY_KEY["coc-checker-check-failed"] == 0
 
 
@@ -542,14 +644,14 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
         raising=False,
     )
 
-    async def fake_fetch_latest_version(_client):
+    async def fake_get_latest_version(_client):
         return module.CocVersion(
             version_name="18.200.19",
             version_code="180200020",
             update_date="2026-03-20T11:44:56+07:00",
         )
 
-    async def fake_download_latest_apk(_client, _shared_dir):
+    async def fake_download_apk(_client, _shared_dir):
         target = shared_dir / "Clash_of_Clans_18.200.19_APKPure.apk"
         target.write_bytes(b"apk")
         return module.DownloadedApk(filename=target.name, path=target)
@@ -561,8 +663,10 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
         return None
 
     module._FAILURE_COUNT_BY_KEY["coc-checker-check-failed"] = 3
-    monkeypatch.setattr(module, "_fetch_latest_version", fake_fetch_latest_version)
-    monkeypatch.setattr(module, "_download_latest_apk", fake_download_latest_apk)
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module._APK_SOURCE, "download_apk", fake_download_apk)
     monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
     monkeypatch.setattr(module, "_send_group_message", fake_send_group_message)
 
@@ -571,11 +675,16 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
     assert "coc-checker-check-failed" not in module._FAILURE_COUNT_BY_KEY
 
 
+# ---------------------------------------------------------------------------
+# ApkPureSource download tests (direct, no NoneBot)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_download_latest_apk_accepts_octet_stream_with_apk_filename(
-    coc_apk_checker_module, tmp_path
-):
-    module = coc_apk_checker_module
+async def test_apkpure_download_accepts_octet_stream_with_apk_filename(tmp_path):
+    sources = _import_sources()
+    source = sources.ApkPureSource()
+
     response = FakeStreamResponse(
         headers={
             "Content-Type": "application/octet-stream",
@@ -585,17 +694,17 @@ async def test_download_latest_apk_accepts_octet_stream_with_apk_filename(
     )
     client = FakeHttpClient(response)
 
-    downloaded = await module._download_latest_apk(client, tmp_path)
+    downloaded = await source.download_apk(client, tmp_path)
 
     assert downloaded.filename == "Clash_of_Clans_18.367.1_APKPure.apk"
     assert downloaded.path.read_bytes() == b"PK\x03\x04apk-data"
 
 
 @pytest.mark.asyncio
-async def test_download_latest_apk_normalizes_plus_named_filename(
-    coc_apk_checker_module, tmp_path
-):
-    module = coc_apk_checker_module
+async def test_apkpure_download_normalizes_plus_named_filename(tmp_path):
+    sources = _import_sources()
+    source = sources.ApkPureSource()
+
     response = FakeStreamResponse(
         headers={
             "Content-Type": "application/octet-stream",
@@ -605,17 +714,17 @@ async def test_download_latest_apk_normalizes_plus_named_filename(
     )
     client = FakeHttpClient(response)
 
-    downloaded = await module._download_latest_apk(client, tmp_path)
+    downloaded = await source.download_apk(client, tmp_path)
 
     assert downloaded.filename == "Clash_of_Clans_18.367.1_APKPure.apk"
     assert downloaded.path.name == "Clash_of_Clans_18.367.1_APKPure.apk"
 
 
 @pytest.mark.asyncio
-async def test_download_latest_apk_rejects_generic_binary_without_zip_signature(
-    coc_apk_checker_module, tmp_path
-):
-    module = coc_apk_checker_module
+async def test_apkpure_download_rejects_generic_binary_without_zip_signature(tmp_path):
+    sources = _import_sources()
+    source = sources.ApkPureSource()
+
     response = FakeStreamResponse(
         headers={
             "Content-Type": "application/octet-stream",
@@ -625,7 +734,9 @@ async def test_download_latest_apk_rejects_generic_binary_without_zip_signature(
     )
     client = FakeHttpClient(response)
 
-    with pytest.raises(RuntimeError, match="Unexpected APK payload for generic binary response"):
-        await module._download_latest_apk(client, tmp_path)
+    with pytest.raises(
+        RuntimeError, match="Unexpected APK payload for generic binary response"
+    ):
+        await source.download_apk(client, tmp_path)
 
     assert list(tmp_path.iterdir()) == []
