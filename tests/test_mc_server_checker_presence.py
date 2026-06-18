@@ -659,7 +659,7 @@ def test_apply_status_update_resets_failures_after_success(mc_server_checker_mod
 
     assert message is None
     assert server_state["last_status"] == "online"
-    assert server_state["consecutive_failures"] == 0
+    assert server_state["consecutive_failures"] == 3  # decremented, not reset
     assert server_state["consecutive_successes"] == 1
     assert server_state["last_error"] is None
 
@@ -686,7 +686,7 @@ def test_apply_status_update_requires_consecutive_successes_to_mark_online(
         )
         assert message is None
         assert server_state["last_status"] == "offline"
-        assert server_state["consecutive_failures"] == 0
+        assert server_state["consecutive_failures"] == 5 - attempt  # decremented, not reset
         assert server_state["consecutive_successes"] == attempt
 
     message = module._apply_status_update(

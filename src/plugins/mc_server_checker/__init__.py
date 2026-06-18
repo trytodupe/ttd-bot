@@ -447,7 +447,7 @@ def _apply_status_update(
     if result.online:
         next_successes = consecutive_successes + 1
         server_state["consecutive_successes"] = next_successes
-        server_state["consecutive_failures"] = 0
+        server_state["consecutive_failures"] = max(0, consecutive_failures - 1)
         server_state["pending_offline_since"] = None
         server_state["last_error"] = None
         if prev_status == "offline":
@@ -482,7 +482,7 @@ def _apply_status_update(
     else:
         next_failures = consecutive_failures + 1
         server_state["consecutive_failures"] = next_failures
-        server_state["consecutive_successes"] = 0
+        server_state["consecutive_successes"] = max(0, consecutive_successes - 1)
         server_state["pending_online_since"] = None
         server_state["last_error"] = result.error
         if prev_status == "online":
