@@ -1531,16 +1531,12 @@ wheels = [
 [[package]]
 name = "nonebot-plugin-status"
 version = "0.9.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/trytodupe/plugin-status?rev=b64c2a62b004e339ac4c975b63b7a6253c8abeab#b64c2a62b004e339ac4c975b63b7a6253c8abeab" }
 dependencies = [
     { name = "humanize" },
     { name = "jinja2" },
     { name = "nonebot2" },
     { name = "psutil" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/d9/f28453bdcbfc8c95c92dc4e452c7fb53ddfcad6cbf69e2d4959c70bbb79b/nonebot_plugin_status-0.9.0.tar.gz", hash = "sha256:59dc4c709400409fcdefa5a1f3e2b3ace406509436055dfde39855e74f70a7e3", size = 6988, upload-time = "2024-09-03T09:21:00.625Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/7c/484d1ec641eda18d8c5cc07a51c476061123a115ee37307614d40ee32ff8/nonebot_plugin_status-0.9.0-py3-none-any.whl", hash = "sha256:7322cc8f360aedfcaffee565f5615f26f05c9314e71f6c503517ed3b7cec23b0", size = 9061, upload-time = "2024-09-03T09:20:59.379Z" },
 ]
 
 [[package]]
@@ -2378,7 +2374,7 @@ requires-dist = [
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
     { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=025ca6f" },
-    { name = "nonebot-plugin-status", specifier = ">=0.9.0" },
+    { name = "nonebot-plugin-status", git = "https://github.com/trytodupe/plugin-status?rev=b64c2a62b004e339ac4c975b63b7a6253c8abeab" },
     { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec" },
     { name = "nonebot-plugin-tortoise-orm", git = "https://github.com/trytodupe/nonebot-plugin-tortoise-orm?rev=135b31627a195811fd3030faeb9e5e5911fc2c79" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.9.0" },
