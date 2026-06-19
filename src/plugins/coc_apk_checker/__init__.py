@@ -39,6 +39,8 @@ _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
 _ALERT_FAILURE_THRESHOLD = 5
 _uploaded_versions: set[str] = set()
+_upload_timeout_count: dict[str, int] = {}
+_MAX_UPLOAD_TIMEOUTS = 2
 
 driver = get_driver()
 
@@ -267,7 +269,13 @@ async def _upload_group_file(group_id: int, apk: DownloadedApk) -> UploadResult:
             name=apk.filename,
         )
     except Exception as exc:
-        return UploadResult(ok=False, detail=f"{type(exc).__name__}: {exc}")
+        detail = f"{type(exc).__name__}: {exc}"
+        # Large file uploads may succeed server-side but the WebSocket
+        # response times out. Treat timeout as ambiguous — don't
+        # announce failure to the group, just retry silently next cycle.
+        if "timeout" in detail.lower():
+            return UploadResult(ok=False, detail="")
+        return UploadResult(ok=False, detail=detail)
 
     error_detail = _extract_upload_error(result)
     if error_detail:
@@ -348,11 +356,32 @@ async def check_coc_apk_update() -> None:
                 logger.info("Uploaded CoC APK successfully: {}", downloaded_apk.filename)
                 return
 
-            logger.warning("Failed to upload CoC APK: {}", upload_result.detail)
-            await _announce_upload_failure(
-                int(plugin_config.coc_checker_group_id),
-                upload_result.detail,
-            )
+            if upload_result.detail:
+                logger.warning("Failed to upload CoC APK: {}", upload_result.detail)
+                await _announce_upload_failure(
+                    int(plugin_config.coc_checker_group_id),
+                    upload_result.detail,
+                )
+            else:
+                # Timeout — ambiguous, retry silently next cycle.
+                # After repeated timeouts, assume it went through to
+                # avoid spamming the group with duplicate uploads.
+                timeout_count = _upload_timeout_count.get(
+                    latest_version.version_name, 0
+                ) + 1
+                _upload_timeout_count[latest_version.version_name] = timeout_count
+                if timeout_count >= _MAX_UPLOAD_TIMEOUTS:
+                    _uploaded_versions.add(latest_version.version_name)
+                    logger.info(
+                        "CoC APK upload timed out {}x, assuming success",
+                        timeout_count,
+                    )
+                else:
+                    logger.warning(
+                        "CoC APK upload timed out ({}/{}), will retry",
+                        timeout_count,
+                        _MAX_UPLOAD_TIMEOUTS,
+                    )
         except Exception as exc:
             logger.opt(exception=True).error("CoC APK check failed: {}", exc)
             await _maybe_alert_after_failure(
