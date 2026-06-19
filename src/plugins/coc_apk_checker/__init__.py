@@ -38,6 +38,7 @@ _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
 _ALERT_FAILURE_THRESHOLD = 5
+_uploaded_versions: set[str] = set()
 
 driver = get_driver()
 
@@ -178,9 +179,14 @@ def _latest_local_version_name(shared_dir: Path) -> str | None:
 
 
 def _has_local_version_name(shared_dir: Path, version_name: str) -> bool:
+    return _local_apk_for_version(shared_dir, version_name) is not None
+
+
+def _local_apk_for_version(shared_dir: Path, version_name: str) -> Path | None:
     for path in _candidate_apk_files(shared_dir):
         if _extract_version_name_from_filename(path.name) == version_name:
-            return True
+            return path
+    return None
     return False
 
 
@@ -294,35 +300,50 @@ async def check_coc_apk_update() -> None:
 
                 local_version_name = _latest_local_version_name(shared_dir)
                 if _has_local_version_name(shared_dir, latest_version.version_name):
-                    logger.info("CoC APK already up to date: {}", local_version_name)
-                    _reset_failure_count("coc-checker-check-failed")
-                    return
+                    if latest_version.version_name in _uploaded_versions:
+                        logger.info("CoC APK already up to date: {}", local_version_name)
+                        _reset_failure_count("coc-checker-check-failed")
+                        return
 
-                logger.info(
-                    "Detected new CoC APK version: {} (local={})",
-                    latest_version.version_name,
-                    local_version_name or "none",
-                )
-                await _send_group_message(
-                    int(plugin_config.coc_checker_group_id),
-                    _format_version_message(latest_version),
-                )
-
-                try:
-                    downloaded_apk = await _APK_SOURCE.download_apk(client, shared_dir)
-                except Exception as exc:
-                    logger.warning("Failed to download CoC APK: {}", exc)
-                    await _announce_upload_failure(
-                        int(plugin_config.coc_checker_group_id),
-                        f"download error: {type(exc).__name__}: {exc}",
+                    # Version exists locally but upload not confirmed — retry
+                    local_path = _local_apk_for_version(shared_dir, latest_version.version_name)
+                    if local_path is None:
+                        return
+                    downloaded_apk = DownloadedApk(
+                        filename=local_path.name,
+                        path=local_path,
                     )
-                    return
+                    logger.info(
+                        "Retrying upload for CoC APK {}",
+                        latest_version.version_name,
+                    )
+                else:
+                    logger.info(
+                        "Detected new CoC APK version: {} (local={})",
+                        latest_version.version_name,
+                        local_version_name or "none",
+                    )
+                    await _send_group_message(
+                        int(plugin_config.coc_checker_group_id),
+                        _format_version_message(latest_version),
+                    )
+
+                    try:
+                        downloaded_apk = await _APK_SOURCE.download_apk(client, shared_dir)
+                    except Exception as exc:
+                        logger.warning("Failed to download CoC APK: {}", exc)
+                        await _announce_upload_failure(
+                            int(plugin_config.coc_checker_group_id),
+                            f"download error: {type(exc).__name__}: {exc}",
+                        )
+                        return
 
             upload_result = await _upload_group_file(
                 int(plugin_config.coc_checker_group_id),
                 downloaded_apk,
             )
             if upload_result.ok:
+                _uploaded_versions.add(latest_version.version_name)
                 _reset_failure_count("coc-checker-check-failed")
                 logger.info("Uploaded CoC APK successfully: {}", downloaded_apk.filename)
                 return
