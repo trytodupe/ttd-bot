@@ -10,6 +10,7 @@ then register it in _SOURCE_REGISTRY.
 
 import json
 import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -81,8 +82,8 @@ class ApkComboSource:
     _JSON_LD_RE = re.compile(
         r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL
     )
-    _R2_APK_LINK_RE = re.compile(r'href="(/r2\?u=[^"]*\.apk%3F[^"]*)"')
-    _VERSION_CODE_RE = re.compile(r"/(\d+)\.\w+\.apk%3F")
+    _R2_APK_LINK_RE = re.compile(r'href="(/r2\?u=[^"]*\.apks?%3F[^"]*)"')
+    _VERSION_CODE_RE = re.compile(r"/(\d+)\.\w+\.apks?%3F")
 
     async def get_latest_version(
         self, client: httpx.AsyncClient
@@ -158,28 +159,88 @@ class ApkComboSource:
             raise RuntimeError("Could not determine version from download URL")
         version_name = version_match.group(1)
         normalized_filename = f"Clash_of_Clans_{version_name}_APKCombo.apk"
+        target_path = shared_dir / normalized_filename
+
+        is_xapk = ".apks?" in decoded_r2 or decoded_r2.endswith(".apks")
 
         # 3. Stream download (follow_redirects=True follows the 302 to S3)
-        async with client.stream(
-            "GET", r2_url, headers=self._COMMON_HEADERS
-        ) as dl_response:
-            dl_response.raise_for_status()
-
-            target_path = shared_dir / normalized_filename
-            temp_path = shared_dir / f".{normalized_filename}.part"
-            temp_path.unlink(missing_ok=True)
+        if is_xapk:
+            xapk_filename = f"Clash_of_Clans_{version_name}_APKCombo.apks"
+            xapk_path = shared_dir / xapk_filename
+            xapk_temp = shared_dir / f".{xapk_filename}.part"
+            xapk_temp.unlink(missing_ok=True)
 
             try:
-                with temp_path.open("wb") as handle:
-                    async for chunk in dl_response.aiter_bytes():
-                        if chunk:
-                            handle.write(chunk)
-            except Exception:
-                temp_path.unlink(missing_ok=True)
-                raise
+                async with client.stream(
+                    "GET", r2_url, headers=self._COMMON_HEADERS
+                ) as dl_response:
+                    dl_response.raise_for_status()
+                    with xapk_temp.open("wb") as handle:
+                        async for chunk in dl_response.aiter_bytes():
+                            if chunk:
+                                handle.write(chunk)
+                xapk_temp.replace(xapk_path)
 
-            temp_path.replace(target_path)
-            return DownloadedApk(filename=normalized_filename, path=target_path)
+                # Extract base APK from the XAPK bundle
+                self._extract_base_apk(xapk_path, target_path)
+            except Exception:
+                target_path.unlink(missing_ok=True)
+                raise
+            finally:
+                xapk_temp.unlink(missing_ok=True)
+                xapk_path.unlink(missing_ok=True)
+        else:
+            async with client.stream(
+                "GET", r2_url, headers=self._COMMON_HEADERS
+            ) as dl_response:
+                dl_response.raise_for_status()
+
+                temp_path = shared_dir / f".{normalized_filename}.part"
+                temp_path.unlink(missing_ok=True)
+
+                try:
+                    with temp_path.open("wb") as handle:
+                        async for chunk in dl_response.aiter_bytes():
+                            if chunk:
+                                handle.write(chunk)
+                except Exception:
+                    temp_path.unlink(missing_ok=True)
+                    raise
+
+                temp_path.replace(target_path)
+
+        return DownloadedApk(filename=normalized_filename, path=target_path)
+
+    @staticmethod
+    def _extract_base_apk(xapk_path: Path, target_path: Path) -> None:
+        """Extract the base APK from an XAPK bundle (.apks zip archive)."""
+        with zipfile.ZipFile(xapk_path) as zf:
+            try:
+                manifest = json.loads(zf.read("manifest.json"))
+            except (KeyError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    f"Failed to read manifest.json from XAPK: {exc}"
+                ) from exc
+
+            base_apk_name: str | None = None
+            for entry in manifest.get("split_apks", []):
+                if not entry.get("is_split_apk", True):
+                    base_apk_name = entry.get("file")
+                    break
+
+            if not base_apk_name:
+                # Fallback: find the largest .apk in the bundle
+                apk_entries = [
+                    info for info in zf.infolist()
+                    if info.filename.endswith(".apk")
+                ]
+                if not apk_entries:
+                    raise RuntimeError("No APK files found inside XAPK bundle")
+                base_apk_name = max(apk_entries, key=lambda e: e.file_size).filename
+
+            with zf.open(base_apk_name) as src, target_path.open("wb") as dst:
+                while chunk := src.read(8192):
+                    dst.write(chunk)
 
 
 # ---------------------------------------------------------------------------
