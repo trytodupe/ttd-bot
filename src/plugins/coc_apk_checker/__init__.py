@@ -33,7 +33,7 @@ __plugin_meta__ = PluginMetadata(
 plugin_config = get_plugin_config(Config)
 _APK_SOURCE = create_source(plugin_config.coc_checker_source)
 
-_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_[^/]+\.apk$')
+_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_[^/]+\.(?:apk|xapk)$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
@@ -41,6 +41,7 @@ _ALERT_FAILURE_THRESHOLD = 5
 _uploaded_versions: set[str] = set()
 _upload_timeout_count: dict[str, int] = {}
 _MAX_UPLOAD_TIMEOUTS = 2
+_UPLOADED_MARKER = ".uploaded_versions.json"
 
 driver = get_driver()
 
@@ -140,6 +141,21 @@ def _reset_failure_count(key: str) -> None:
 
 def _shared_dir() -> Path:
     return Path(plugin_config.coc_checker_shared_dir)
+
+
+def _load_uploaded_versions(shared_dir: Path) -> set[str]:
+    marker = shared_dir / _UPLOADED_MARKER
+    if marker.is_file():
+        try:
+            return set(json.loads(marker.read_text()))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return set()
+
+
+def _save_uploaded_versions(shared_dir: Path) -> None:
+    marker = shared_dir / _UPLOADED_MARKER
+    marker.write_text(json.dumps(sorted(_uploaded_versions)))
 
 
 def _should_enable_checker() -> bool:
@@ -352,6 +368,7 @@ async def check_coc_apk_update() -> None:
             )
             if upload_result.ok:
                 _uploaded_versions.add(latest_version.version_name)
+                _save_uploaded_versions(shared_dir)
                 _reset_failure_count("coc-checker-check-failed")
                 logger.info("Uploaded CoC APK successfully: {}", downloaded_apk.filename)
                 return
@@ -372,6 +389,7 @@ async def check_coc_apk_update() -> None:
                 _upload_timeout_count[latest_version.version_name] = timeout_count
                 if timeout_count >= _MAX_UPLOAD_TIMEOUTS:
                     _uploaded_versions.add(latest_version.version_name)
+                    _save_uploaded_versions(shared_dir)
                     logger.info(
                         "CoC APK upload timed out {}x, assuming success",
                         timeout_count,
@@ -400,6 +418,8 @@ async def _start_coc_checker() -> None:
     if not _should_enable_checker():
         nonebot_logger.info("CoC APK checker disabled because /shared is unavailable")
         return
+
+    _uploaded_versions.update(_load_uploaded_versions(_shared_dir()))
 
     scheduler.add_job(
         check_coc_apk_update,

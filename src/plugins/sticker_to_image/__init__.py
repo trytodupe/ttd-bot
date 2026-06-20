@@ -97,7 +97,9 @@ def _extract_reply_sticker_source(event: MessageEvent) -> str | None:
     return _extract_sticker_source(reply_message)
 
 
-def _build_image_reply(source: str) -> MessageSegment:
+def _build_image_reply(source: str, as_file: bool = False) -> MessageSegment:
+    if as_file:
+        return MessageSegment("file", {"file": source, "name": "sticker.gif"})
     return MessageSegment.image(source)
 
 
@@ -109,9 +111,11 @@ async def handle_sticker(event: MessageEvent) -> None:
     if not _should_handle_event(event):
         return
 
+    is_private = str(getattr(event, "message_type", "")).strip().lower() == "private"
+
     source = _extract_sticker_source(event.message)
     if source:
-        return await matcher.finish(_build_image_reply(source))
+        return await matcher.finish(_build_image_reply(source, as_file=is_private))
 
     reply_source = _extract_reply_sticker_source(event)
     if not reply_source:
@@ -120,4 +124,4 @@ async def handle_sticker(event: MessageEvent) -> None:
     if _extract_control_text(event.message) == "url":
         return await matcher.finish(reply_source)
 
-    return await matcher.finish(_build_image_reply(reply_source))
+    return await matcher.finish(_build_image_reply(reply_source, as_file=is_private))
