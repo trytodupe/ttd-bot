@@ -27,6 +27,11 @@ def _is_sticker_image_segment(segment: MessageSegment) -> bool:
         return False
 
     data = dict(getattr(segment, "data", {}) or {})
+
+    # Market face (商城表情) converted to image by SnowLuma/NapCat
+    if data.get("emoji_id"):
+        return True
+
     sub_type = str(
         data.get("sub_type")
         or data.get("subtype")
