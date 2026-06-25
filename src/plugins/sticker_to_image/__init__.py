@@ -10,7 +10,7 @@ __plugin_meta__ = PluginMetadata(
     usage="Send a sticker image in private chat, or @ the bot with one in group chat.",
 )
 
-_STICKER_SUMMARIES = {"[动画表情]"}
+_STICKER_SUMMARIES = {"[动画表情]", "[图片]"}
 
 
 def _should_handle_event(event: MessageEvent) -> bool:
