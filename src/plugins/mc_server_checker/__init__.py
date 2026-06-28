@@ -588,6 +588,7 @@ async def _run_check(
     send_changes: bool,
     include_player_changes: bool = False,
     only_online_servers: bool = False,
+    save: bool = True,
 ) -> None:
     async with _POLL_LOCK:
         broadcast_presets = _get_preset_broadcasts() if send_changes else []
@@ -681,7 +682,8 @@ async def _run_check(
                         )
                         if player_messages:
                             change_messages.setdefault(group_id, []).extend(player_messages)
-            save_state(state)
+            if save:
+                save_state(state)
 
         if send_changes:
             for group_id, messages in change_messages.items():
@@ -726,6 +728,7 @@ async def _start_polling() -> None:
             "send_changes": True,
             "include_player_changes": True,
             "only_online_servers": True,
+            "save": False,
         },
     )
 
