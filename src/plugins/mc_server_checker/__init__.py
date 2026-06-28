@@ -625,7 +625,16 @@ async def _run_check(
 
         async with _STATE_LOCK:
             state = load_state()
+            # Re-filter using fresh state so the player poll doesn't re-check
+            # servers the status poll just marked offline.
+            fresh_group_servers = _collect_group_servers(state, only_online_servers)
+            fresh_ips: set[str] = set()
+            for servers in fresh_group_servers.values():
+                fresh_ips.update(servers)
+
             for ip, (owner_group, all_groups) in unique_ips.items():
+                if ip not in fresh_ips:
+                    continue
                 result = unique_results[ip]
                 server_state = get_server_state(state, owner_group, result.ip)
                 change_message = _apply_status_update(
