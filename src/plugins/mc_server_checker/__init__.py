@@ -599,15 +599,23 @@ async def _run_check(
         if not group_servers and not broadcast_presets:
             return
 
-        local_group_ids_by_ip: dict[str, set[int]] = {}
-        for group_id, ips in group_servers.items():
-            for ip in ips:
-                local_group_ids_by_ip.setdefault(ip, set()).add(group_id)
-
-        results_by_group: dict[int, list[ServerCheckResult]] = {}
+        # Deduplicate: check each IP once, use the first group as state owner.
+        unique_ips: dict[str, tuple[int, tuple[int, ...]]] = {}
         for group_id, servers in group_servers.items():
-            tasks = [_check_server(ip) for ip in servers]
-            results_by_group[group_id] = await asyncio.gather(*tasks)
+            for ip in servers:
+                if ip not in unique_ips:
+                    unique_ips[ip] = (group_id, (group_id,))
+                else:
+                    owner, groups = unique_ips[ip]
+                    unique_ips[ip] = (owner, groups + (group_id,))
+
+        unique_ips_list = list(unique_ips)
+        unique_checks = await asyncio.gather(
+            *[_check_server(ip) for ip in unique_ips_list]
+        )
+        unique_results: dict[str, ServerCheckResult] = dict(
+            zip(unique_ips_list, unique_checks)
+        )
         preset_results: list[tuple[QueryPreset, ServerCheckResult]] = []
         for preset in broadcast_presets:
             preset_results.append((preset, await _check_server(preset.target_ip)))
@@ -617,28 +625,32 @@ async def _run_check(
 
         async with _STATE_LOCK:
             state = load_state()
-            for group_id, results in results_by_group.items():
-                for result in results:
-                    server_state = get_server_state(state, group_id, result.ip)
-                    change_message = _apply_status_update(
-                        group_id, server_state, result, now
+            for ip, (owner_group, all_groups) in unique_ips.items():
+                result = unique_results[ip]
+                server_state = get_server_state(state, owner_group, result.ip)
+                change_message = _apply_status_update(
+                    owner_group, server_state, result, now
+                )
+                _log_check_result(
+                    result, server_state,
+                    f"group:{owner_group}", change_message, now,
+                )
+                if change_message:
+                    _queue_broadcast_messages(
+                        change_messages, all_groups, change_message,
                     )
-                    _log_check_result(
-                        result, server_state,
-                        f"group:{group_id}", change_message, now,
-                    )
-                    if change_message:
-                        change_messages.setdefault(group_id, []).append(change_message)
-                    if include_player_changes and result.online:
+                if include_player_changes and result.online:
+                    for group_id in all_groups:
                         player_messages = _build_player_diff_messages(group_id, result, now)
                         if player_messages:
                             change_messages.setdefault(group_id, []).extend(player_messages)
             for preset, result in preset_results:
                 server_state = get_preset_state(state, preset.trigger)
+                direct_groups = set(unique_ips.get(result.ip, (0, ()))[1])
                 broadcast_group_ids = tuple(
                     group_id
                     for group_id in preset.broadcast_group_ids
-                    if group_id not in local_group_ids_by_ip.get(result.ip, set())
+                    if group_id not in direct_groups
                 )
                 change_message = _apply_status_update(
                     0,
