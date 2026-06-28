@@ -696,9 +696,9 @@ def test_apply_status_update_requires_consecutive_successes_to_mark_online(
         now=1005.0,
     )
 
-    assert message == "[+] server a.example:25565 | offline for: 5m1s"
+    assert message == "[+] server a.example:25565 | offline for: 5m5s"
     assert server_state["last_status"] == "online"
     assert server_state["consecutive_failures"] == 0
     assert server_state["consecutive_successes"] == 5
     assert server_state["online_since"] == 1001.0
-    assert server_state["last_seen_online_at"] == 1005.0
+    assert server_state["last_seen_online_at"] == 700.0  # preserved from before the offline period

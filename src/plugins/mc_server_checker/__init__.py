@@ -468,17 +468,19 @@ def _apply_status_update(
             )
         elif prev_status != "online":
             server_state["online_since"] = now
+            server_state["last_seen_online_at"] = now
             change_message = _format_change_message(
                 result,
                 server_state,
                 now,
                 display_name=display_name,
             )
+        else:
+            server_state["last_seen_online_at"] = now
         if server_state.get("online_since") is None:
             server_state["online_since"] = now
         server_state["pending_online_since"] = None
         server_state["last_status"] = "online"
-        server_state["last_seen_online_at"] = now
     else:
         next_failures = consecutive_failures + 1
         server_state["consecutive_failures"] = next_failures
