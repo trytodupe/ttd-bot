@@ -24,6 +24,7 @@ from nonebot.params import CommandArg
 from .config import Config
 from .storage import (
     add_server,
+    append_check_log,
     get_group_servers,
     get_preset_state,
     get_server_state,
@@ -558,6 +559,31 @@ def _collect_group_servers(
     return group_servers
 
 
+def _log_check_result(
+    result: ServerCheckResult,
+    server_state: dict[str, Any],
+    source: str,
+    change_message: str | None,
+    now: float,
+) -> None:
+    players_str: str | None = None
+    if result.online:
+        players_str = f"{result.players_online}/{result.players_max}"
+    append_check_log({
+        "ts": now,
+        "src": source,
+        "ip": result.ip,
+        "ok": result.online,
+        "players": players_str,
+        "ping": result.ping_ms,
+        "err": result.error,
+        "prev": server_state.get("last_status"),
+        "cf": server_state.get("consecutive_failures", 0),
+        "cs": server_state.get("consecutive_successes", 0),
+        "msg": change_message,
+    })
+
+
 async def _run_check(
     send_changes: bool,
     include_player_changes: bool = False,
@@ -596,6 +622,10 @@ async def _run_check(
                     change_message = _apply_status_update(
                         group_id, server_state, result, now
                     )
+                    _log_check_result(
+                        result, server_state,
+                        f"group:{group_id}", change_message, now,
+                    )
                     if change_message:
                         change_messages.setdefault(group_id, []).append(change_message)
                     if include_player_changes and result.online:
@@ -615,6 +645,10 @@ async def _run_check(
                     result,
                     now,
                     display_name=preset.display_name,
+                )
+                _log_check_result(
+                    result, server_state,
+                    f"preset:{preset.trigger}", change_message, now,
                 )
                 if not result.online and server_state.get("last_status") == "offline":
                     for group_id in broadcast_group_ids:
@@ -802,6 +836,10 @@ async def handle_status(event: GroupMessageEvent) -> None:
                     now,
                     display_name=display_name,
                 )
+                _log_check_result(
+                    result, server_state,
+                    f"preset:{query_preset.trigger}", change_message, now,
+                )
                 if change_message:
                     change_messages.append(change_message)
                     _queue_broadcast_messages(
@@ -819,6 +857,10 @@ async def handle_status(event: GroupMessageEvent) -> None:
                     result,
                     now,
                     display_name=display_name,
+                )
+                _log_check_result(
+                    result, server_state,
+                    f"group:{source_group_id}", change_message, now,
                 )
                 if change_message:
                     change_messages.append(change_message)

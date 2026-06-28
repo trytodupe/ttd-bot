@@ -15,6 +15,11 @@ PRESETS_FILE: Path = store.get_config_file(
     plugin_name="mc_server_checker",
     filename="presets.json",
 )
+CHECK_LOG: Path = store.get_data_file(
+    plugin_name="mc_server_checker",
+    filename="checks.jsonl",
+)
+_MAX_CHECK_LOG_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_state() -> dict[str, Any]:
@@ -154,3 +159,29 @@ def remove_server(state: dict[str, Any], group_id: int, ip: str) -> bool:
     if not servers:
         groups.pop(group_key, None)
     return True
+
+
+def append_check_log(record: dict[str, Any]) -> None:
+    CHECK_LOG.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+    try:
+        with CHECK_LOG.open("a", encoding="utf-8") as f:
+            f.write(line)
+        if CHECK_LOG.stat().st_size > _MAX_CHECK_LOG_BYTES:
+            _truncate_check_log()
+    except Exception:
+        pass
+
+
+def _truncate_check_log() -> None:
+    """Keep the newer half of the file."""
+    try:
+        data = CHECK_LOG.read_bytes()
+    except Exception:
+        return
+    mid = len(data) // 2
+    # find the next newline so we don't split a record
+    nl = data.find(b"\n", mid)
+    if nl != -1:
+        mid = nl + 1
+    CHECK_LOG.write_bytes(data[mid:])
