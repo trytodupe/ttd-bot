@@ -8,7 +8,8 @@ Domain glossary and architecture reference for ttd-bot. Keeps terminology consis
 
 ### QQ / OneBot Concepts
 
-- **NapCat** — QQ protocol implementation running on this machine. Bot connects to it via WebSocket. Avoid: "QQ server", "go-cqhttp"
+- **SnowLuma** — Current QQ protocol backend. Next-gen NapCat replacement. Docker Compose at `~/deploy/SnowLuma/`, source at `~/ro-repositories/`. Bot connects via WebSocket (OneBot V11). Avoid: "NapCat" (old), "QQ server", "go-cqhttp"
+- **NapCat** — Previous QQ protocol backend. Replaced by SnowLuma. Mention only when discussing legacy
 - **OneBot V11** — The message protocol standard between NapCat and NoneBot. All events/types use this spec
 - **PrivateMessageEvent** — A DM (私聊). The bot receives all DMs directly, no `to_me()` needed
 - **GroupMessageEvent** — A group chat message. Group commands must use `to_me()` to trigger only when bot is addressed
@@ -61,25 +62,15 @@ Domain glossary and architecture reference for ttd-bot. Keeps terminology consis
 
 ## 2. Plugin Inventory
 
-| Plugin | Location | Purpose |
-|--------|----------|---------|
-| keep_alive | local | 续火 — daily "1" DM reminder, toggle via DM |
-| mc_server_checker | local | Minecraft server status monitoring, group queries |
-| coc_apk_checker | local | Clash of Clans APK update checker, auto-upload |
-| citation_counter | local | Citation/quote tracking per group |
-| chat_statistics | local | Chat statistics and wordcloud |
-| access_request | local | Permission request workflow |
-| auto_ping | local | Superuser ping monitoring |
-| auto_react | local | Auto-react to specific users |
-| easy_trigger | local | Trigger-based responses, mute notices |
-| sticker_to_image | local | Convert QQ stickers to images |
-| tetr_chercher | local | Tetr.io stats lookup |
-| release_note | local | Release note publisher |
-| ttd_help | local | Help command |
-| nonebot-plugin-learning-chat | forked dep | LLM chat, uses Tortoise ORM |
-| nonebot-plugin-clovers | dep | Multi-platform card game framework |
-| nonebot-plugin-uninfo | dep | User/session info persistence |
-| nonebot-plugin-chatrecorder | dep | Message history recording |
+**Canonical source:** `src/plugins/ttd_help/registry.py` — the `FEATURE_DOCS` tuple defines every user-facing feature with commands, visibility, and descriptions. Update that file when adding/changing features.
+
+The registry lists plugins by `key` (e.g. `"cite"`, `"mc"`, `"chat"`). Visibility levels: `public` (everyone), `admin` (superuser only), `background` (no user-facing commands), `internal` (hidden from help).
+
+Additional local plugins not in the registry:
+- **keep_alive** — 续火 daily DM reminder, toggle via DM command "续火"
+
+Infrastructure plugins (in `IGNORED_PROVIDERS` in registry.py, not shown to users):
+- `nonebot_plugin_orm`, `nonebot_plugin_localstore`, `nonebot_plugin_uninfo`, `nonebot_plugin_chatrecorder`, `nonebot_plugin_datastore`, `nonebot_plugin_clovers`, `nonebot-plugin-auto-sendlike`
 
 ---
 
@@ -87,7 +78,7 @@ Domain glossary and architecture reference for ttd-bot. Keeps terminology consis
 
 ```
 User message
-  └─ NapCat (QQ protocol)
+  └─ SnowLuma (QQ protocol, Docker)
       └─ OneBot V11 (WebSocket)
           └─ NoneBot2 (matcher engine)
               ├─ Command matchers (priority 10, block=True)
@@ -95,7 +86,7 @@ User message
               └─ Notice matchers (priority 1)
 
 Background:
-  APScheduler ──► plugin handler ──► bot.call_api() ──► NapCat ──► QQ
+  APScheduler ──► plugin handler ──► bot.call_api() ──► SnowLuma ──► QQ
 
 Storage:
   PostgreSQL ◄── nonebot-plugin-orm (SQLAlchemy)
