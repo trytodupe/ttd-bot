@@ -95,29 +95,18 @@ async def _send_to_subscribers() -> None:
 
 # ── scheduler ───────────────────────────────────────────────────────────────
 
-_MAIN_JOB_ID = "keep_alive_main"
-_RETRY_JOB_ID = "keep_alive_retry"
+_JOB_ID = "keep_alive_send"
 
 
 @get_driver().on_startup
 async def _setup_scheduler() -> None:
-    # main send at 12:00 UTC+8 (04:00 UTC)
+    # first run at 12:05 UTC+8 (04:05 UTC), then every 30 min until 07:30+1 UTC+8
     scheduler.add_job(
         _send_to_subscribers,
         "cron",
-        hour=4,
-        minute=0,
-        id=_MAIN_JOB_ID,
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-    # retry every 30 min from 04:00–23:30 UTC (12:00–07:30 UTC+8 next day)
-    scheduler.add_job(
-        _send_to_subscribers,
-        "cron",
-        minute="0,30",
+        minute="5,35",
         hour="4-23",
-        id=_RETRY_JOB_ID,
+        id=_JOB_ID,
         replace_existing=True,
         misfire_grace_time=1800,
     )
@@ -125,7 +114,6 @@ async def _setup_scheduler() -> None:
 
 @get_driver().on_shutdown
 async def _teardown_scheduler() -> None:
-    for job_id in (_MAIN_JOB_ID, _RETRY_JOB_ID):
-        job = scheduler.get_job(job_id)
-        if job:
-            job.remove()
+    job = scheduler.get_job(_JOB_ID)
+    if job:
+        job.remove()

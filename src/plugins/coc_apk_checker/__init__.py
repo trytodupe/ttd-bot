@@ -33,7 +33,7 @@ __plugin_meta__ = PluginMetadata(
 plugin_config = get_plugin_config(Config)
 _APK_SOURCE = create_source(plugin_config.coc_checker_source)
 
-_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_[^/]+\.(?:apk|xapk)$')
+_FILENAME_RE = re.compile(r'^Clash_of_Clans_(?P<version_name>[^/]+?)_[^/]+\.apk$')
 _JOB_ID = "coc_apk_checker_poll"
 _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}

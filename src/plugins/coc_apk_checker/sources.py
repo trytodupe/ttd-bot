@@ -81,7 +81,8 @@ class ApkComboSource:
     _JSON_LD_RE = re.compile(
         r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL
     )
-    _R2_APK_LINK_RE = re.compile(r'href="(/r2\?u=[^"]*\.apks?%3F[^"]*)"')
+    _R2_APK_LINK_RE = re.compile(r'href="(/r2\?u=[^"]*\.apk%3F[^"]*)"')
+    _R2_XAPK_LINK_RE = re.compile(r'href="(/r2\?u=[^"]*\.apks%3F[^"]*)"')
     _VERSION_CODE_RE = re.compile(r"/(\d+)\.\w+\.apks?%3F")
 
     async def get_latest_version(
@@ -144,6 +145,11 @@ class ApkComboSource:
 
         apk_match = self._R2_APK_LINK_RE.search(html)
         if not apk_match:
+            if self._R2_XAPK_LINK_RE.search(html):
+                raise RuntimeError(
+                    "APKCombo only serves XAPK for this version, "
+                    "plain APK not available"
+                )
             raise RuntimeError("No APK download link found on APKCombo download page")
 
         r2_path = apk_match.group(1)
@@ -157,9 +163,7 @@ class ApkComboSource:
         if not version_match:
             raise RuntimeError("Could not determine version from download URL")
         version_name = version_match.group(1)
-        is_xapk = ".apks?" in decoded_r2 or decoded_r2.endswith(".apks")
-        ext = ".xapk" if is_xapk else ".apk"
-        normalized_filename = f"Clash_of_Clans_{version_name}_APKCombo{ext}"
+        normalized_filename = f"Clash_of_Clans_{version_name}_APKCombo.apk"
         target_path = shared_dir / normalized_filename
 
         # 3. Stream download (follow_redirects=True follows the 302 to S3)
@@ -182,7 +186,37 @@ class ApkComboSource:
 
             temp_path.replace(target_path)
 
+        # 4. Verify the downloaded APK is a valid standalone APK
+        self._verify_apk(target_path)
+
         return DownloadedApk(filename=normalized_filename, path=target_path)
+
+    @staticmethod
+    def _verify_apk(apk_path: Path) -> None:
+        """Verify the downloaded file is a valid standalone APK.
+
+        Checks that the file is a ZIP with AndroidManifest.xml and at
+        least one DEX file. Raises RuntimeError if not.
+        """
+        import zipfile as zf
+
+        try:
+            with zf.ZipFile(apk_path) as archive:
+                names = set(archive.namelist())
+        except (zf.BadZipFile, OSError) as exc:
+            raise RuntimeError(f"Downloaded file is not a valid ZIP: {exc}") from exc
+
+        if "AndroidManifest.xml" not in names:
+            raise RuntimeError(
+                "Downloaded APK missing AndroidManifest.xml — "
+                "likely a split/incomplete APK"
+            )
+
+        if not any(n.endswith(".dex") for n in names):
+            raise RuntimeError(
+                "Downloaded APK has no DEX files — "
+                "likely a split/incomplete APK"
+            )
 
 
 # ---------------------------------------------------------------------------
