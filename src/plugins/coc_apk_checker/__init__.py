@@ -280,6 +280,7 @@ async def _upload_group_file(group_id: int, apk: DownloadedApk) -> UploadResult:
     try:
         result = await bot.call_api(
             "upload_group_file",
+            _timeout=600,
             group_id=group_id,
             file=str(apk.path),
             name=apk.filename,
