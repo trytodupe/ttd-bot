@@ -143,6 +143,16 @@ async def fetch_user_data(username: str) -> Optional[dict[str, Any]]:
                 return None
             json_data = resp.json()
 
+            info_url = f"https://ch.tetr.io/api/users/{clean_name}"
+            info_resp = await client.get(info_url)
+            gametime_val = 0.0
+            if info_resp.status_code == 200:
+                info_json = info_resp.json()
+                if isinstance(info_json, dict) and info_json.get("success"):
+                    info_data = info_json.get("data")
+                    if isinstance(info_data, dict):
+                        gametime_val = _coerce_float(info_data.get("gametime", 0))
+
         if not isinstance(json_data, dict) or not json_data.get("success"):
             return None
 
@@ -194,7 +204,7 @@ async def fetch_user_data(username: str) -> Optional[dict[str, Any]]:
             "zen_score": _coerce_int(zen.get("score", 0)),
             "zen_level": _coerce_int(zen.get("level", 0)),
             "xp": xp_val,
-            "playtime": _coerce_int(raw.get("gametime", 0)),
+            "playtime": gametime_val,
         }
     except Exception as exc:
         logger.error(f"[Tetrio] data fetch failed: {exc}")
@@ -221,28 +231,45 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
     title = data["username"]
 
     res = [f"{title}的个人信息—TETR.IO", ""]
-    tr_diff = get_diff(data["tr"], prev["tr"] if prev else None)
-    res.append(f"{data['tr']:,.2f} TR±{data['v']:.2f}, {data['rank']}段{tr_diff}")
 
-    if data["gl_standing"] != -1:
-        gl_diff = get_diff(data["gl_standing"], prev["gl_standing"] if prev else None, is_rank=True)
-        res.append(f"#{data['gl_standing']:,}{gl_diff}")
+    has_league = (
+        data["gl_standing"] != -1
+        or data["country_rank"] != -1
+        or (data["tr"] > 0 and data["rank"].upper() != "Z")
+    )
+    has_40l = bool(data["sprint"])
+    has_blitz = bool(data["blitz"])
+    has_zen = bool(data["zen_score"])
 
-    if data["country_rank"] != -1:
-        lc_diff = get_diff(data["country_rank"], prev["country_rank"] if prev else None, is_rank=True)
-        res.append(f"{data['country']} #{data['country_rank']:,}{lc_diff}")
+    xp_line = f"{int(data['xp']):,} Exp 玩家总经验{get_diff(data['xp'], prev['xp'] if prev else None)}"
 
-    res.append(f"{int(data['xp']):,} Exp 玩家总经验{get_diff(data['xp'], prev['xp'] if prev else None)}")
+    if not (has_league or has_40l or has_blitz or has_zen):
+        res.append("无TL/40L/BLITZ/ZEN数据")
+        res.append(xp_line)
+    else:
+        tr_diff = get_diff(data["tr"], prev["tr"] if prev else None)
+        res.append(f"{data['tr']:,.2f} TR±{data['v']:.2f}, {data['rank']}段{tr_diff}")
 
-    if data["sprint"]:
-        res.append(f"{data['sprint']:.3f}s 40L成绩")
-    if data["blitz"]:
-        res.append(f"{data['blitz']:,.0f} Blitz成绩")
-    if data["zen_score"]:
-        res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
+        if data["gl_standing"] != -1:
+            gl_diff = get_diff(data["gl_standing"], prev["gl_standing"] if prev else None, is_rank=True)
+            res.append(f"#{data['gl_standing']:,}{gl_diff}")
+
+        if data["country_rank"] != -1:
+            lc_diff = get_diff(data["country_rank"], prev["country_rank"] if prev else None, is_rank=True)
+            res.append(f"{data['country']} #{data['country_rank']:,}{lc_diff}")
+
+        res.append(xp_line)
+
+        if data["sprint"]:
+            res.append(f"{data['sprint']:.3f}s 40L成绩")
+        if data["blitz"]:
+            res.append(f"{data['blitz']:,.0f} Blitz成绩")
+        if data["zen_score"]:
+            res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
+
     if data["playtime"] > 0:
         t_diff = get_diff(data["playtime"], prev["playtime"] if prev else None)
-        res.append(f"{format_playtime(data['playtime'])}{t_diff}")
+        res.append(f"{format_playtime(data['playtime'])} 游玩时间{t_diff}")
 
     await matcher.finish("\n".join(res))
     return
