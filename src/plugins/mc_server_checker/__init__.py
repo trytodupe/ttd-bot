@@ -95,6 +95,12 @@ class QueryPreset:
     target_ip: str
     display_name: str
     broadcast_group_ids: tuple[int, ...] = ()
+    primary_trigger: str = ""  # empty means trigger IS the primary
+
+    @property
+    def state_trigger(self) -> str:
+        """Trigger key used for state tracking. Aliases share state with the primary."""
+        return self.primary_trigger or self.trigger
 
 
 def _list_query_presets() -> list[QueryPreset]:
@@ -117,6 +123,19 @@ def _list_query_presets() -> list[QueryPreset]:
                 broadcast_group_ids=broadcast_group_ids,
             )
         )
+        raw_aliases = raw_preset.get("aliases") or []
+        if isinstance(raw_aliases, list):
+            for alias in raw_aliases:
+                if isinstance(alias, str) and alias.strip():
+                    presets.append(
+                        QueryPreset(
+                            trigger=alias.strip(),
+                            target_ip=target_ip,
+                            display_name=display_name,
+                            broadcast_group_ids=broadcast_group_ids,
+                            primary_trigger=trigger,
+                        )
+                    )
     return presets
 
 
@@ -124,7 +143,7 @@ def _get_preset_broadcasts() -> list[QueryPreset]:
     return [
         preset
         for preset in _list_query_presets()
-        if preset.target_ip and preset.broadcast_group_ids
+        if preset.target_ip and preset.broadcast_group_ids and not preset.primary_trigger
     ]
 
 
@@ -654,7 +673,7 @@ async def _run_check(
                         if player_messages:
                             change_messages.setdefault(group_id, []).extend(player_messages)
             for preset, result in preset_results:
-                server_state = get_preset_state(state, preset.trigger)
+                server_state = get_preset_state(state, preset.state_trigger)
                 direct_groups = set(unique_ips.get(result.ip, (0, ()))[1])
                 broadcast_group_ids = tuple(
                     group_id
@@ -851,7 +870,7 @@ async def handle_status(event: GroupMessageEvent) -> None:
         state = load_state()
         for result in results:
             if query_preset is not None:
-                server_state = get_preset_state(state, query_preset.trigger)
+                server_state = get_preset_state(state, query_preset.state_trigger)
                 display_name = query_preset.display_name
                 change_message = _apply_status_update(
                     0,
