@@ -68,6 +68,13 @@ query_matcher = on_command(
 )
 
 
+def xp_to_level(xp: float) -> int:
+    import math
+    if xp <= 0:
+        return 1
+    return math.floor((xp / 500) ** 0.6 + xp / (5000 + max(0, xp - 4_000_000) / 5000) + 1)
+
+
 def format_playtime(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -175,6 +182,8 @@ async def fetch_user_data(username: str) -> Optional[dict[str, Any]]:
         if v_val is None:
             v_val = league.get("volatility", 0)
         v_val = _coerce_float(v_val)
+        if v_val <= 0:
+            v_val = max(_coerce_float(league.get("rd", 0)), 0.0)
 
         rank_val = str(league.get("rank") or "z").upper()
         gl_stand = _coerce_int(league.get("standing", -1), -1)
@@ -233,39 +242,39 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
     res = [f"{title}的个人信息—TETR.IO", ""]
 
     has_league = (
-        data["gl_standing"] != -1
+        data["tr"] != -1
+        or data["gl_standing"] != -1
         or data["country_rank"] != -1
-        or (data["tr"] > 0 and data["rank"].upper() != "Z")
     )
-    has_40l = bool(data["sprint"])
-    has_blitz = bool(data["blitz"])
-    has_zen = bool(data["zen_score"])
 
-    xp_line = f"{int(data['xp']):,} Exp 玩家总经验{get_diff(data['xp'], prev['xp'] if prev else None)}"
-
-    if not (has_league or has_40l or has_blitz or has_zen):
-        res.append("无TL/40L/BLITZ/ZEN数据")
-        res.append(xp_line)
-    else:
+    if has_league:
         tr_diff = get_diff(data["tr"], prev["tr"] if prev else None)
         res.append(f"{data['tr']:,.2f} TR±{data['v']:.2f}, {data['rank']}段{tr_diff}")
-
         if data["gl_standing"] != -1:
             gl_diff = get_diff(data["gl_standing"], prev["gl_standing"] if prev else None, is_rank=True)
             res.append(f"#{data['gl_standing']:,}{gl_diff}")
-
         if data["country_rank"] != -1:
             lc_diff = get_diff(data["country_rank"], prev["country_rank"] if prev else None, is_rank=True)
             res.append(f"{data['country']} #{data['country_rank']:,}{lc_diff}")
+    else:
+        res.append("暂未进行排位赛")
 
-        res.append(xp_line)
+    res.append(f"Lv.{xp_to_level(data['xp'])} ({int(data['xp']):,} XP){get_diff(data['xp'], prev['xp'] if prev else None)}")
 
-        if data["sprint"]:
-            res.append(f"{data['sprint']:.3f}s 40L成绩")
-        if data["blitz"]:
-            res.append(f"{data['blitz']:,.0f} Blitz成绩")
-        if data["zen_score"]:
-            res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
+    if data["sprint"]:
+        res.append(f"{data['sprint']:.3f}s 40L成绩")
+    else:
+        res.append("无40L数据")
+
+    if data["blitz"]:
+        res.append(f"{data['blitz']:,.0f} Blitz成绩")
+    else:
+        res.append("无BLITZ数据")
+
+    if data["zen_score"]:
+        res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
+    else:
+        res.append("无ZEN数据")
 
     if data["playtime"] > 0:
         t_diff = get_diff(data["playtime"], prev["playtime"] if prev else None)
