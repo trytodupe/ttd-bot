@@ -220,13 +220,13 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
 
     title = data["username"]
 
-    res = [f"{title}的个人信息—TETR.IO {data['country']}", ""]
+    res = [f"{title}的个人信息—TETR.IO", ""]
     tr_diff = get_diff(data["tr"], prev["tr"] if prev else None)
     res.append(f"{data['tr']:,.2f} TR±{data['v']:.2f}, {data['rank']}段{tr_diff}")
 
     if data["gl_standing"] != -1:
         gl_diff = get_diff(data["gl_standing"], prev["gl_standing"] if prev else None, is_rank=True)
-        res.append(f"#{data['gl_standing']:,} 全球排名{gl_diff}")
+        res.append(f"#{data['gl_standing']:,}{gl_diff}")
 
     if data["country_rank"] != -1:
         lc_diff = get_diff(data["country_rank"], prev["country_rank"] if prev else None, is_rank=True)
@@ -237,7 +237,7 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
     if data["sprint"]:
         res.append(f"{data['sprint']:.3f}s 40L成绩")
     if data["blitz"]:
-        res.append(f"{data['blitz']:,} Blitz成绩")
+        res.append(f"{data['blitz']:,.0f} Blitz成绩")
     if data["zen_score"]:
         res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
     if data["playtime"] > 0:
