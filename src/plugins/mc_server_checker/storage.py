@@ -96,11 +96,15 @@ def load_presets() -> dict[str, dict[str, Any]]:
         target_ip = str(raw_preset.get("target_ip") or "").strip()
         display_name = str(raw_preset.get("display_name") or normalized_trigger).strip()
         broadcast_group_ids = _parse_group_ids(raw_preset.get("broadcast_group_ids"))
-        presets[normalized_trigger] = {
+        preset_entry: dict[str, Any] = {
             "target_ip": target_ip,
             "display_name": display_name or normalized_trigger,
             "broadcast_group_ids": broadcast_group_ids,
         }
+        aliases = raw_preset.get("aliases")
+        if isinstance(aliases, list):
+            preset_entry["aliases"] = aliases
+        presets[normalized_trigger] = preset_entry
     return presets
 
 
