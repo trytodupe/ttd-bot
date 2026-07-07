@@ -93,6 +93,14 @@ def format_playtime(seconds: float) -> str:
     return f"{hours}小时 {minutes}分钟 {secs}秒"
 
 
+def format_sprint(seconds: float) -> str:
+    if seconds >= 60:
+        mins = int(seconds // 60)
+        secs = seconds % 60
+        return f"{mins}m {secs:.3f}s"
+    return f"{seconds:.3f}s"
+
+
 def get_diff(curr: float, prev: float | None, is_rank: bool = False, is_time: bool = False) -> str:
     if prev is None:
         return ""
@@ -231,14 +239,18 @@ async def fetch_user_data(username: str) -> Optional[dict[str, Any]]:
         return None
 
 
-async def handle_query(event: MessageEvent, matcher: Any) -> None:
+async def handle_query(event: MessageEvent, matcher: Any, args: str = "") -> None:
     uid = str(event.get_user_id())
+    arg_name = args.strip().lower()
 
-    if not user_storage.has_user(uid):
+    if arg_name:
+        username = arg_name
+    elif user_storage.has_user(uid):
+        username = user_storage.get_single_user(uid)
+    else:
         await matcher.finish("❌ 请先绑定账号：ttd tetr bind <id>.")
         return
 
-    username = user_storage.get_single_user(uid)
     data = await fetch_user_data(username)
     if not data:
         await matcher.finish("❌ 获取数据失败。")
@@ -271,10 +283,10 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
     else:
         res.append("暂未进行排位赛")
 
-    res.append(f"Lv.{xp_to_level(data['xp'])} ({int(data['xp']):,} XP){get_diff(data['xp'], prev['xp'] if prev else None)}")
+    res.append(f"Lv.{xp_to_level(data['xp'])} 玩家等级 ({int(data['xp']):,} XP){get_diff(data['xp'], prev['xp'] if prev else None)}")
 
     if data["sprint"]:
-        res.append(f"{data['sprint']:.3f}s 40L成绩")
+        res.append(f"{format_sprint(data['sprint'])} 40L成绩")
     else:
         res.append("无40L数据")
 
@@ -310,8 +322,8 @@ async def _handle_bind(event: MessageEvent, args: Message = CommandArg()) -> Non
 
 
 @query_matcher.handle()
-async def _handle_query(event: MessageEvent) -> None:
-    await handle_query(event, query_matcher)
+async def _handle_query(event: MessageEvent, args: Message = CommandArg()) -> None:
+    await handle_query(event, query_matcher, args.extract_plain_text())
 
 
 # ── scheduled background fetch ───────────────────────────────────────────
