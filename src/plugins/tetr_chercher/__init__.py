@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from itertools import product
 from pathlib import Path
 from typing import Any, Optional
 
 import httpx
 import nonebot_plugin_localstore as store
-from nonebot import CommandGroup, get_plugin_config, on_command
+from nonebot import CommandGroup, get_driver, get_plugin_config, on_command, require
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -14,7 +16,11 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import to_me
 
 from .config import Config
+from .history_storage import HistoryStorage
 from .user_storage import UserStorage
+
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 __plugin_meta__ = PluginMetadata(
     name="tetr_chercher",
@@ -25,7 +31,6 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
-history_data: dict[str, dict[str, Any]] = {}
 PROXY = None
 
 DATA_FILE: Path = store.get_data_file(
@@ -33,6 +38,12 @@ DATA_FILE: Path = store.get_data_file(
     filename="user_bindings.json",
 )
 user_storage = UserStorage(DATA_FILE)
+
+HISTORY_FILE: Path = store.get_data_file(
+    plugin_name="nonebot_plugin_tetr_chercher",
+    filename="history.json",
+)
+history_storage = HistoryStorage(HISTORY_FILE)
 
 tetr_group = CommandGroup("tetr", rule=to_me(), priority=2, block=True)
 bind_cmd = tetr_group.command("bind ")
@@ -234,8 +245,9 @@ async def handle_query(event: MessageEvent, matcher: Any) -> None:
         return
 
     hist_key = f"{uid}_{username}"
-    prev = history_data.get(hist_key)
-    history_data[hist_key] = data.copy()
+    now = time.time()
+    prev = history_storage.get_closest_to_24h_ago(hist_key, now=now)
+    history_storage.record(hist_key, data.copy(), now=now)
 
     title = data["username"]
 
@@ -300,3 +312,65 @@ async def _handle_bind(event: MessageEvent, args: Message = CommandArg()) -> Non
 @query_matcher.handle()
 async def _handle_query(event: MessageEvent) -> None:
     await handle_query(event, query_matcher)
+
+
+# ── scheduled background fetch ───────────────────────────────────────────
+
+_FETCH_JOB_ID = "tetr_chercher_fetch"
+_FETCH_INTERVAL_SECONDS = 3600  # hourly
+_RETRY_BACKOFFS = (2, 4, 8)     # seconds; 3 retries
+_DELAY_BETWEEN_USERS = 1.0      # TETR.IO politeness
+
+
+async def _fetch_one_with_retry(username: str) -> Optional[dict[str, Any]]:
+    for attempt, delay in enumerate([0, *_RETRY_BACKOFFS]):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            data = await fetch_user_data(username)
+            if data:
+                return data
+            if attempt < len(_RETRY_BACKOFFS):
+                logger.warning(
+                    f"[tetr_chercher] fetch {username} returned None, "
+                    f"retry {attempt+1}/{len(_RETRY_BACKOFFS)} in {_RETRY_BACKOFFS[attempt]}s"
+                )
+        except Exception as e:
+            if attempt < len(_RETRY_BACKOFFS):
+                logger.warning(
+                    f"[tetr_chercher] fetch {username} raised {e!r}, "
+                    f"retry in {_RETRY_BACKOFFS[attempt]}s"
+                )
+    return None
+
+
+async def _scheduled_fetch_all() -> None:
+    bindings = user_storage.get_all_users()
+    if not bindings:
+        return
+    logger.info(f"[tetr_chercher] scheduled fetch starting for {len(bindings)} users")
+    now = time.time()
+    successes = 0
+    for qq_uid, tetr_name in bindings.items():
+        hist_key = f"{qq_uid}_{tetr_name}"
+        data = await _fetch_one_with_retry(tetr_name)
+        if data:
+            history_storage.record(hist_key, data, now=now)
+            successes += 1
+        await asyncio.sleep(_DELAY_BETWEEN_USERS)
+    logger.info(f"[tetr_chercher] scheduled fetch done: {successes}/{len(bindings)} succeeded")
+
+
+@get_driver().on_startup
+async def _setup_fetch_scheduler() -> None:
+    if scheduler.get_job(_FETCH_JOB_ID):
+        return
+    scheduler.add_job(
+        _scheduled_fetch_all,
+        "interval",
+        seconds=_FETCH_INTERVAL_SECONDS,
+        id=_FETCH_JOB_ID,
+        coalesce=True,
+        misfire_grace_time=600,
+        max_instances=1,
+    )
