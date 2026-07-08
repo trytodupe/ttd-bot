@@ -90,7 +90,7 @@ def format_playtime(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    return f"{hours}小时 {minutes}分钟 {secs}秒"
+    return f"{hours} 小时 {minutes} 分钟 {secs} 秒"
 
 
 def format_sprint(seconds: float) -> str:
@@ -101,12 +101,15 @@ def format_sprint(seconds: float) -> str:
     return f"{seconds:.3f}s"
 
 
-def get_diff(curr: float, prev: float | None, is_rank: bool = False, is_time: bool = False) -> str:
+def get_diff(curr: float, prev: float | None, is_rank: bool = False, is_time: bool = False, use_sign: bool = False) -> str:
     if prev is None:
         return ""
     diff = curr - prev
     if abs(diff) < 0.0001:
         return ""
+    if use_sign:
+        sign = "+" if diff > 0 else "-"
+        return f" ({sign}{int(abs(diff)):,})"
     if is_rank or is_time:
         return f" (↑{abs(diff)})" if diff < 0 else f" (↓{abs(diff)})"
     return f" (↑{diff:,.2f})" if diff > 0 else f" (↓{abs(diff):,.2f})"
@@ -283,7 +286,7 @@ async def handle_query(event: MessageEvent, matcher: Any, args: str = "") -> Non
     else:
         res.append("暂未进行排位赛")
 
-    res.append(f"Lv.{xp_to_level(data['xp'])} 玩家等级 ({int(data['xp']):,} XP){get_diff(data['xp'], prev['xp'] if prev else None)}")
+    res.append(f"{int(data['xp']):,} Exp ( Lv.{xp_to_level(data['xp'])} ) 玩家经验{get_diff(data['xp'], prev['xp'] if prev else None, use_sign=True)}")
 
     if data["sprint"]:
         res.append(f"{format_sprint(data['sprint'])} 40L成绩")
@@ -296,12 +299,12 @@ async def handle_query(event: MessageEvent, matcher: Any, args: str = "") -> Non
         res.append("无BLITZ数据")
 
     if data["zen_score"]:
-        res.append(f"{int(data['zen_score']):,} Zen分数 (Lv.{data['zen_level']})")
+        res.append(f"{int(data['zen_score']):,} ( Lv.{data['zen_level']} ) Zen分数")
     else:
         res.append("无ZEN数据")
 
     if data["playtime"] > 0:
-        t_diff = get_diff(data["playtime"], prev["playtime"] if prev else None)
+        t_diff = get_diff(data["playtime"], prev["playtime"] if prev else None, use_sign=True)
         res.append(f"{format_playtime(data['playtime'])} 游玩时间{t_diff}")
 
     await matcher.finish("\n".join(res))
