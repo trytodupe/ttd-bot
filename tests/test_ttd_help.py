@@ -58,6 +58,7 @@ def test_ttd_help_index_is_chinese_and_hides_admin_by_default():
     assert "管理员可发送 ttd help admin 查看管理功能" in text
     assert "插件响应权限" not in text
     assert "轻量触发器" not in text
+    assert "ttd ping add <别名> @用户" in text
 
 
 def test_ttd_help_admin_index_only_includes_admin_docs():

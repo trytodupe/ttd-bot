@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import shlex
 from typing import Iterable, Mapping
 
 from nonebot.adapters.onebot.v11 import Message
@@ -10,6 +11,7 @@ from .storage import normalize_alias
 
 
 ADD_USAGE = "Usage: ttd ping add <qq|@user> <alias>"
+PROPOSAL_ADD_USAGE = "Usage: ttd ping add <alias> @user"
 REMOVE_USAGE = "Usage: ttd ping remove <alias>"
 
 
@@ -33,7 +35,10 @@ def _extract_at_targets(args: Message) -> list[str]:
 
 def _extract_tokens(args: Message) -> list[str]:
     text = " ".join(seg.data.get("text", "") for seg in args if seg.type == "text")
-    return text.strip().split()
+    try:
+        return shlex.split(text.strip())
+    except ValueError:
+        return text.strip().split()
 
 
 def parse_add_command_args(args: Message, *, is_group: bool) -> AddCommandArgs:
@@ -60,6 +65,21 @@ def parse_add_command_args(args: Message, *, is_group: bool) -> AddCommandArgs:
         raise ValueError("QQ should contain digits only.")
 
     return AddCommandArgs(target_qq=int(qq_text), alias=normalize_alias(alias_text))
+
+
+def parse_proposal_add_command_args(args: Message) -> AddCommandArgs:
+    at_targets = _extract_at_targets(args)
+    tokens = _extract_tokens(args)
+
+    if len(at_targets) != 1 or len(tokens) != 1:
+        raise ValueError(PROPOSAL_ADD_USAGE)
+    if not at_targets[0].isdigit():
+        raise ValueError("Only one numeric @user is allowed.")
+
+    return AddCommandArgs(
+        target_qq=int(at_targets[0]),
+        alias=normalize_alias(tokens[0]),
+    )
 
 
 def parse_remove_command_args(args: Message) -> str:

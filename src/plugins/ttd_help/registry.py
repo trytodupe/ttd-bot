@@ -29,14 +29,14 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
     FeatureDoc(
         key="ping",
         title="自动提醒",
-        description="配置关键词别名，群聊中出现别名时自动 @ 对应用户。",
+        description="提议关键词别名，通过群聊表情投票后自动 @ 对应用户。",
         providers=("auto_ping",),
-        visibility="admin",
         commands=(
-            "ttd ping add <QQ号|@用户> <别名>",
+            "ttd ping add <别名> @用户",
             "ttd ping remove <别名>",
             "ttd ping list",
         ),
+        notes=("超级用户直接添加别名；remove 和 list 仅超级用户可用。",),
     ),
     FeatureDoc(
         key="react",
