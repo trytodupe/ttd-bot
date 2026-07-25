@@ -25,7 +25,6 @@ from nonebot.adapters.onebot.v11 import (
     NoticeEvent,
 )
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_uninfo import QryItrface, SceneType
@@ -118,6 +117,10 @@ def _is_superuser_id(bot: Bot, qq: int | str) -> bool:
         user_id in superusers
         or f"{adapter_name}:{user_id}" in superusers
     )
+
+
+def _can_remove_alias(bot: Bot, requester_qq: int | str, owner_qq: int) -> bool:
+    return int(requester_qq) == owner_qq or _is_superuser_id(bot, requester_qq)
 
 
 def _extract_message_id(result: Any) -> int:
@@ -321,8 +324,8 @@ async def handle(bot: Bot, event: GroupMessageEvent) -> None:
 
 ping_cmd_group = CommandGroup("ping", priority=10, block=True)
 ping_add_cmd = ping_cmd_group.command("add")
-ping_remove_cmd = ping_cmd_group.command("remove", permission=SUPERUSER)
-ping_list_cmd = ping_cmd_group.command("list", permission=SUPERUSER)
+ping_remove_cmd = ping_cmd_group.command("remove")
+ping_list_cmd = ping_cmd_group.command("list")
 
 
 @ping_add_cmd.handle()
@@ -385,6 +388,7 @@ async def handle_ping_add(
 
 @ping_remove_cmd.handle()
 async def handle_ping_remove(
+    bot: Bot,
     event: MessageEvent,
     interface: QryItrface,
     args: Message = CommandArg(),
@@ -395,6 +399,9 @@ async def handle_ping_remove(
         await ping_remove_cmd.finish(str(exc))
 
     owner_qq = registry.get_alias_owner(alias)
+    if owner_qq is not None and not _can_remove_alias(bot, event.user_id, owner_qq):
+        await ping_remove_cmd.finish("You can only remove your own aliases.")
+
     if isinstance(event, GroupMessageEvent):
         if owner_qq is None:
             await ping_remove_cmd.finish("Alias not found in this group.")
@@ -407,6 +414,12 @@ async def handle_ping_remove(
         display_name = await _get_private_display_name(interface, owner_qq)
 
     async with _REGISTRY_LOCK:
+        current_owner_qq = registry.get_alias_owner(alias)
+        if (
+            current_owner_qq is not None
+            and not _can_remove_alias(bot, event.user_id, current_owner_qq)
+        ):
+            await ping_remove_cmd.finish("You can only remove your own aliases.")
         try:
             removed_qq = registry.remove_alias(alias)
         except AliasNotFoundError:

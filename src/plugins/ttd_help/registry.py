@@ -36,7 +36,7 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
             "ttd ping remove <别名>",
             "ttd ping list",
         ),
-        notes=("超级用户直接添加别名；remove 和 list 仅超级用户可用。",),
+        notes=("超级用户直接添加别名；普通用户只能 remove 自己的别名。",),
     ),
     FeatureDoc(
         key="react",

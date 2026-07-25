@@ -270,6 +270,18 @@ def test_reaction_approval_excludes_seed_and_accepts_superuser(auto_ping_modules
     assert package._should_approve_reaction(bot, notice(user_id=100, count=4, is_add=False)) is False
 
 
+def test_remove_alias_allows_owner_and_superuser_only(auto_ping_modules):
+    package, _, _ = auto_ping_modules
+    bot = SimpleNamespace(
+        adapter=SimpleNamespace(get_name=lambda: "OneBot V11"),
+        config=SimpleNamespace(superusers={"12345"}),
+    )
+
+    assert package._can_remove_alias(bot, requester_qq=100, owner_qq=100) is True
+    assert package._can_remove_alias(bot, requester_qq=200, owner_qq=100) is False
+    assert package._can_remove_alias(bot, requester_qq=12345, owner_qq=100) is True
+
+
 def test_build_proposal_message_uses_matching_faces(auto_ping_modules):
     package, _, helpers = auto_ping_modules
     parsed = helpers.AddCommandArgs(target_qq=123456, alias="bob")
