@@ -1,0 +1,3 @@
+# Ensure every controller descendant, including Gondolin QEMU processes, is
+# removed from the dedicated OpenRC service cgroup after graceful shutdown.
+rc_cgroup_cleanup="YES"

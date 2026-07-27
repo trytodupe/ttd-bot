@@ -152,3 +152,12 @@ clovers.toml
 .serena/
 
 fonts/
+
+# Host-side isolated development controller
+dev-agent/node_modules/
+dev-agent/.pnpm-store/
+dev-agent/*.log
+dev-agent/.state/
+
+# Dev-agent workspace config
+.dev-agent/

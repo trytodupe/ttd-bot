@@ -112,6 +112,11 @@ cmd_group = CommandGroup("ttd cite", ...)
 
 For DM-only commands, use `is_type(PrivateMessageEvent)` without `to_me()`.
 
+The internal `dev_agent_gateway` is the narrow exception: it accepts bare
+`/dev`, `/dev-admin`, and `/test` commands in allowlisted groups at priority 1
+so it can fail closed before ordinary plugins see them. It inspects message
+segments directly and does not treat ordinary group traffic as staging input.
+
 ---
 
 ## 5. Known Gotchas

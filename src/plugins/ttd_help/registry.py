@@ -232,6 +232,8 @@ IGNORED_PROVIDERS: frozenset[str] = frozenset(
         "nonebot_plugin_chatrecorder",
         "nonebot_plugin_clovers",
         "nonebot_plugin_datastore",
+        "dev_agent_gateway",
+        "keep_alive",
         "nonebot_plugin_localstore",
         "nonebot_plugin_orm",
         "nonebot_plugin_uninfo",

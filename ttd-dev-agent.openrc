@@ -1,0 +1,33 @@
+#!/sbin/openrc-run
+
+description="ttd-bot isolated QQ development agent"
+pidfile="/run/${RC_SVCNAME}.pid"
+command="/home/ttd/deploy/ttd-bot/dev-agent/start.sh"
+command_background="yes"
+output_log="/var/log/ttd-dev-agent/controller.log"
+error_log="/var/log/ttd-dev-agent/controller.log"
+directory="/home/ttd/deploy/ttd-bot/dev-agent"
+retry="TERM/45/KILL/10"
+
+depend() {
+	need localmount net
+	before ttd-bot
+}
+
+start_pre() {
+	checkpath --directory --mode 0700 /var/lib/ttd-dev-agent
+	checkpath --directory --owner root:ttd --mode 0750 /run/ttd-dev-agent
+	checkpath --directory --mode 0750 /var/log/ttd-dev-agent
+}
+
+stop_post() {
+	# OpenRC normally performs this through rc_cgroup_cleanup. Explicitly
+	# trigger the service-scoped kernel teardown as well: QEMU can finish
+	# reparenting just after start-stop-daemon observes the Node PID exit.
+	cgroup_path="/sys/fs/cgroup/openrc.${RC_SVCNAME}"
+	if [ -w "${cgroup_path}/cgroup.kill" ]; then
+		printf '1' >"${cgroup_path}/cgroup.kill"
+	else
+		cgroup_cleanup
+	fi
+}

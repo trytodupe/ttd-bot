@@ -1,0 +1,27 @@
+{
+  "name": "ttd-bot-dev-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "tsx --test test/*.test.ts",
+    "test:integration": "tsx --test test/integration/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@earendil-works/gondolin": "0.12.0",
+    "@earendil-works/pi-agent-core": "0.80.6",
+    "@earendil-works/pi-ai": "0.80.6",
+    "tsx": "4.20.6"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.13",
+    "typescript": "5.9.3"
+  }
+}
