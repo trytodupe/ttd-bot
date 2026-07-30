@@ -1476,7 +1476,7 @@ default = [
 [[package]]
 name = "nonebot-plugin-parser"
 version = "2.3.4"
-source = { git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=5bfd9e3#5bfd9e3117ff1cac3cd4f77743c8ae3d14833f4d" }
+source = { git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=c001403#c00140343b41427c9edb91f4a3cd0894e0084160" }
 dependencies = [
     { name = "aiofiles" },
     { name = "apilmoji", extra = ["tqdm"] },
@@ -2373,7 +2373,7 @@ requires-dist = [
     { name = "nonebot-plugin-groupmate-waifu", specifier = ">=0.27" },
     { name = "nonebot-plugin-localstore", specifier = ">=0.7.4" },
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
-    { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=5bfd9e3" },
+    { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=c001403" },
     { name = "nonebot-plugin-status", git = "https://github.com/trytodupe/plugin-status?rev=b64c2a62b004e339ac4c975b63b7a6253c8abeab" },
     { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec" },
     { name = "nonebot-plugin-tortoise-orm", git = "https://github.com/trytodupe/nonebot-plugin-tortoise-orm?rev=135b31627a195811fd3030faeb9e5e5911fc2c79" },
