@@ -218,6 +218,18 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         commands=("发送支持平台的链接、BV号、小程序或卡片",),
     ),
     FeatureDoc(
+        key="sub",
+        title="B站订阅",
+        description="订阅 B 站 UP 主，在新动态或开播时推送到本群。",
+        providers=("bilibili_subscription",),
+        commands=(
+            "ttd sub add <UID>",
+            "ttd sub remove <UID>",
+            "ttd sub list",
+        ),
+        notes=("添加和移除订阅需要群管理员或超级用户权限。",),
+    ),
+    FeatureDoc(
         key="moellmchats",
         title="群聊 LLM",
         description="在群聊中 @ 机器人进行多轮上下文对话。",
