@@ -36,7 +36,7 @@ dependencies = [
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@0133af1d6d3d055f0ff9c80f4f57cd580a274bec",
     "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@1197ff319f5fbc9ea9f6056f36d3080461a1e133",
-    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@68e2b940d8867dbb118c46a6bb82db359f8df83a",
+    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@1a628007abc0e89bc2b3fbd5998772056ab630fa",
 ]
 
 [tool.nonebot]
