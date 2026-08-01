@@ -59,6 +59,52 @@ def test_legacy_state_round_trip(tmp_path):
     assert reloaded.get_last_seen("999") == "1000"
 
 
+def test_legacy_production_shape_loads_without_migration(tmp_path):
+    from bilibili_subscription.storage import SubscriptionManager
+
+    relations = [
+        ("101", "1"),
+        ("102", "2"),
+        ("103", "3"),
+        ("104", "4"),
+        ("105", "4"),
+        ("105", "5"),
+        ("105", "6"),
+        ("105", "7"),
+        ("105", "8"),
+        ("106", "1"),
+    ]
+    path = tmp_path / "bilibili_subscriptions.json"
+    path.write_text(
+        json.dumps(
+            {
+                "subscriptions": [
+                    {"scope": "QQClient", "group_id": group_id, "uid": uid}
+                    for group_id, uid in relations
+                ],
+                "last_seen": {
+                    str(uid): {"last_dynamic_id": str(uid), "last_live_start": 0}
+                    for uid in range(1, 9)
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = SubscriptionManager(path)
+
+    assert len(manager.get_all_uids()) == 8
+    assert (
+        sum(len(manager.get_groups_for_uid(uid)) for uid in manager.get_all_uids())
+        == 10
+    )
+    assert {
+        group_id
+        for uid in manager.get_all_uids()
+        for _, group_id in manager.get_groups_for_uid(uid)
+    } == {"101", "102", "103", "104", "105", "106"}
+
+
 def test_extract_live_url_from_current_major_layout():
     from bilibili_subscription.service import extract_url_from_item
 
@@ -171,3 +217,19 @@ async def test_live_statuses_are_fetched_in_one_batch(monkeypatch):
             [("uids[]", "74152480"), ("uids[]", "23396430")],
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_jobs_follow_plugin_lifecycle():
+    from bilibili_subscription import __main__ as plugin_main
+    from nonebot_plugin_apscheduler import scheduler
+
+    await plugin_main.register_jobs()
+    try:
+        assert scheduler.get_job(plugin_main.LIVE_JOB_ID) is not None
+        assert scheduler.get_job(plugin_main.DYNAMIC_JOB_ID) is not None
+    finally:
+        await plugin_main.remove_jobs()
+
+    assert scheduler.get_job(plugin_main.LIVE_JOB_ID) is None
+    assert scheduler.get_job(plugin_main.DYNAMIC_JOB_ID) is None
