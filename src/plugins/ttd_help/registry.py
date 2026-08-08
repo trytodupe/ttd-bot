@@ -234,7 +234,7 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         title="群聊 LLM",
         description="在群聊中 @ 机器人进行多轮上下文对话。",
         providers=("nonebot_plugin_moellmchats",),
-        commands=("@机器人 <消息>",),
+        commands=("@机器人 <消息>", "ttd llm status"),
     ),
 )
 
