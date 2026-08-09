@@ -148,12 +148,12 @@ def _build_proposal_message(
     return message
 
 
-def _should_approve_reaction(bot: Bot, notice: ReactionNotice) -> bool:
+def _reaction_passes_threshold(bot: Bot, notice: ReactionNotice) -> bool:
     if not notice.is_add or notice.user_id == int(bot.self_id):
         return False
-    approval_count = max(0, notice.count - 1)
+    reaction_count = max(0, notice.count - 1)
     return (
-        approval_count >= config.auto_ping_proposal_approval_threshold
+        reaction_count >= config.auto_ping_proposal_approval_threshold
         or _is_superuser_id(bot, notice.user_id)
     )
 
@@ -196,6 +196,7 @@ async def _list_all_aliases(interface: QryItrface) -> str:
 
 
 def _remove_pending_proposal(alias: str) -> None:
+    proposal_store.expire()
     pending = proposal_store.find_by_alias(alias)
     if pending is not None:
         proposal_store.remove(pending.group_id, pending.message_id)
@@ -214,6 +215,7 @@ async def _create_alias_proposal(
     )
 
     async with _REGISTRY_LOCK:
+        proposal_store.expire()
         owner_qq = registry.get_alias_owner(parsed.alias)
         if owner_qq is not None:
             raise AliasConflictError(parsed.alias, owner_qq)
@@ -285,10 +287,20 @@ async def _approve_proposal(bot: Bot, proposal: AliasProposal) -> bool:
     return True
 
 
+async def _reject_proposal(proposal: AliasProposal) -> bool:
+    async with _REGISTRY_LOCK:
+        current = proposal_store.get(proposal.group_id, proposal.message_id)
+        if current != proposal:
+            return False
+        proposal_store.remove(proposal.group_id, proposal.message_id)
+    return True
+
+
 async def _is_tracked_proposal_reaction(event: Event) -> bool:
     notice = parse_reaction_notice(event)
     if notice is None:
         return False
+    proposal_store.expire()
     proposal = proposal_store.get(notice.group_id, notice.message_id)
     return proposal is not None and notice.emoji_id in {
         proposal.approve_emoji_id,
@@ -446,17 +458,19 @@ async def handle_proposal_reaction(bot: Bot, event: NoticeEvent) -> None:
         return
 
     proposal = proposal_store.get(notice.group_id, notice.message_id)
-    if proposal is None or notice.emoji_id != proposal.approve_emoji_id:
+    if proposal is None or not _reaction_passes_threshold(bot, notice):
         return
-    if _should_approve_reaction(bot, notice):
+    if notice.emoji_id == proposal.approve_emoji_id:
         await _approve_proposal(bot, proposal)
+    elif notice.emoji_id == proposal.reject_emoji_id:
+        await _reject_proposal(proposal)
 
 
-async def _fetch_approval_voters(bot: Bot, proposal: AliasProposal) -> set[int]:
+async def _fetch_voters(bot: Bot, proposal: AliasProposal, emoji_id: str) -> set[int]:
     result = await bot.call_api(
         "get_emoji_likes",
         message_id=proposal.message_id,
-        emoji_id=proposal.approve_emoji_id,
+        emoji_id=emoji_id,
     )
     if not isinstance(result, dict):
         return set()
@@ -478,6 +492,7 @@ async def _fetch_approval_voters(bot: Bot, proposal: AliasProposal) -> set[int]:
 
 @driver.on_bot_connect
 async def _recover_pending_proposals(bot: Bot) -> None:
+    proposal_store.expire()
     for proposal in proposal_store.all():
         if registry.get_alias_owner(proposal.alias) is not None:
             async with _REGISTRY_LOCK:
@@ -485,7 +500,16 @@ async def _recover_pending_proposals(bot: Bot) -> None:
             continue
 
         try:
-            voters = await _fetch_approval_voters(bot, proposal)
+            reject_voters = await _fetch_voters(
+                bot,
+                proposal,
+                proposal.reject_emoji_id,
+            )
+            approve_voters = await _fetch_voters(
+                bot,
+                proposal,
+                proposal.approve_emoji_id,
+            )
         except Exception as exc:
             logger.warning(
                 "Failed to recover ping proposal %s/%s: %r",
@@ -495,8 +519,15 @@ async def _recover_pending_proposals(bot: Bot) -> None:
             )
             continue
 
-        if (
-            len(voters) >= config.auto_ping_proposal_approval_threshold
-            or any(_is_superuser_id(bot, voter) for voter in voters)
-        ):
+        reject_passed = (
+            len(reject_voters) >= config.auto_ping_proposal_approval_threshold
+            or any(_is_superuser_id(bot, voter) for voter in reject_voters)
+        )
+        approve_passed = (
+            len(approve_voters) >= config.auto_ping_proposal_approval_threshold
+            or any(_is_superuser_id(bot, voter) for voter in approve_voters)
+        )
+        if reject_passed:
+            await _reject_proposal(proposal)
+        elif approve_passed:
             await _approve_proposal(bot, proposal)

@@ -99,6 +99,14 @@ def test_match_targets_is_case_insensitive(auto_ping_modules, tmp_path):
     assert registry.match_targets("hello bob and ALICE and bob again") == {123456, 234567}
 
 
+def test_match_targets_treats_plus_as_literal_text(auto_ping_modules, tmp_path):
+    _, storage, _ = auto_ping_modules
+    registry = storage.AliasRegistry(tmp_path / "aliases.json")
+    registry.add_alias(123456, "骚a+")
+
+    assert registry.match_targets("这个骚A+模型") == {123456}
+
+
 def test_parse_add_args_supports_group_at(auto_ping_modules):
     _, _, helpers = auto_ping_modules
     args = Message([MessageSegment.at(123456), MessageSegment.text(" bob")])
@@ -216,6 +224,38 @@ def test_proposal_store_roundtrip(auto_ping_modules, tmp_path):
     assert reloaded.all() == []
 
 
+def test_proposal_store_silently_expires_after_12_hours(auto_ping_modules, tmp_path):
+    proposals = importlib.import_module("auto_ping.proposals")
+    now = 1_000_000
+    store = proposals.ProposalStore(tmp_path / "proposals.json")
+    expired = proposals.create_proposal(
+        message_id=1,
+        group_id=2,
+        proposer_qq=3,
+        target_qq=4,
+        alias="expired",
+        approve_emoji_id="76",
+        reject_emoji_id="424",
+        created_at=now - proposals.PROPOSAL_TTL_SECONDS,
+    )
+    active = proposals.create_proposal(
+        message_id=5,
+        group_id=6,
+        proposer_qq=7,
+        target_qq=8,
+        alias="active",
+        approve_emoji_id="76",
+        reject_emoji_id="424",
+        created_at=now - proposals.PROPOSAL_TTL_SECONDS + 1,
+    )
+    store.add(expired)
+    store.add(active)
+
+    assert store.expire(now=now) == [expired]
+    assert store.all() == [active]
+    assert proposals.ProposalStore(store.file_path).all() == [active]
+
+
 def test_parse_snowluma_reaction_notice(auto_ping_modules):
     proposals = importlib.import_module("auto_ping.proposals")
     event = SimpleNamespace(
@@ -239,7 +279,7 @@ def test_parse_snowluma_reaction_notice(auto_ping_modules):
     )
 
 
-def test_reaction_approval_excludes_seed_and_accepts_superuser(auto_ping_modules, monkeypatch):
+def test_reaction_threshold_excludes_seed_and_accepts_superuser(auto_ping_modules, monkeypatch):
     package, _, _ = auto_ping_modules
     proposals = importlib.import_module("auto_ping.proposals")
     bot = SimpleNamespace(
@@ -263,11 +303,11 @@ def test_reaction_approval_excludes_seed_and_accepts_superuser(auto_ping_modules
             is_add=is_add,
         )
 
-    assert package._should_approve_reaction(bot, notice(user_id=100, count=3)) is False
-    assert package._should_approve_reaction(bot, notice(user_id=100, count=4)) is True
-    assert package._should_approve_reaction(bot, notice(user_id=12345, count=2)) is True
-    assert package._should_approve_reaction(bot, notice(user_id=999, count=4)) is False
-    assert package._should_approve_reaction(bot, notice(user_id=100, count=4, is_add=False)) is False
+    assert package._reaction_passes_threshold(bot, notice(user_id=100, count=3)) is False
+    assert package._reaction_passes_threshold(bot, notice(user_id=100, count=4)) is True
+    assert package._reaction_passes_threshold(bot, notice(user_id=12345, count=2)) is True
+    assert package._reaction_passes_threshold(bot, notice(user_id=999, count=4)) is False
+    assert package._reaction_passes_threshold(bot, notice(user_id=100, count=4, is_add=False)) is False
 
 
 def test_remove_alias_allows_owner_and_superuser_only(auto_ping_modules):
@@ -342,6 +382,52 @@ async def test_create_alias_proposal_persists_and_adds_reactions(
 
 
 @pytest.mark.asyncio
+async def test_create_alias_proposal_reuses_alias_after_silent_expiry(
+    auto_ping_modules,
+    tmp_path,
+    monkeypatch,
+):
+    package, storage, helpers = auto_ping_modules
+    proposals = importlib.import_module("auto_ping.proposals")
+    now = 1_000_000
+    registry = storage.AliasRegistry(tmp_path / "aliases.json")
+    proposal_store = proposals.ProposalStore(tmp_path / "proposals.json")
+    proposal_store.add(
+        proposals.create_proposal(
+            message_id=1,
+            group_id=2,
+            proposer_qq=3,
+            target_qq=4,
+            alias="骚a+",
+            approve_emoji_id="26",
+            reject_emoji_id="66",
+            created_at=now - proposals.PROPOSAL_TTL_SECONDS,
+        )
+    )
+
+    class FakeBot:
+        async def call_api(self, api, **data):
+            if api == "send_group_msg":
+                return {"message_id": 5}
+            return None
+
+    monkeypatch.setattr(package, "registry", registry)
+    monkeypatch.setattr(package, "proposal_store", proposal_store)
+    monkeypatch.setattr(package.random, "sample", lambda population, count: [76, 424])
+    monkeypatch.setattr(proposals.time, "time", lambda: now)
+
+    await package._create_alias_proposal(
+        FakeBot(),
+        SimpleNamespace(group_id=6, user_id=7),
+        helpers.AddCommandArgs(target_qq=8, alias="骚a+"),
+    )
+
+    assert [(proposal.message_id, proposal.alias) for proposal in proposal_store.all()] == [
+        (5, "骚a+"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_approve_proposal_adds_alias_once(
     auto_ping_modules,
     tmp_path,
@@ -377,3 +463,86 @@ async def test_approve_proposal_adds_alias_once(
     assert registry.get_alias_owner("the-trigger") == 400
     assert proposal_store.all() == []
     assert [api for api, _ in calls] == ["send_group_msg"]
+
+
+@pytest.mark.asyncio
+async def test_superuser_rejection_removes_pending_proposal(
+    auto_ping_modules,
+    tmp_path,
+    monkeypatch,
+):
+    package, _, _ = auto_ping_modules
+    proposals = importlib.import_module("auto_ping.proposals")
+    proposal_store = proposals.ProposalStore(tmp_path / "proposals.json")
+    proposal = proposals.create_proposal(
+        message_id=2109136661,
+        group_id=1076794521,
+        proposer_qq=3623213187,
+        target_qq=2237499852,
+        alias="骚a+",
+        approve_emoji_id="26",
+        reject_emoji_id="66",
+    )
+    proposal_store.add(proposal)
+    bot = SimpleNamespace(
+        self_id="1940196378",
+        adapter=SimpleNamespace(get_name=lambda: "OneBot V11"),
+        config=SimpleNamespace(superusers={"1669790626"}),
+    )
+    event = SimpleNamespace(
+        notice_type="group_msg_emoji_like",
+        sub_type="add",
+        group_id=proposal.group_id,
+        user_id=1669790626,
+        message_id=proposal.message_id,
+        likes=[{"emoji_id": proposal.reject_emoji_id, "count": 3}],
+    )
+    monkeypatch.setattr(package, "proposal_store", proposal_store)
+
+    await package.handle_proposal_reaction(bot, event)
+
+    assert proposal_store.all() == []
+
+
+@pytest.mark.asyncio
+async def test_recovery_removes_proposal_rejected_while_disconnected(
+    auto_ping_modules,
+    tmp_path,
+    monkeypatch,
+):
+    package, storage, _ = auto_ping_modules
+    proposals = importlib.import_module("auto_ping.proposals")
+    registry = storage.AliasRegistry(tmp_path / "aliases.json")
+    proposal_store = proposals.ProposalStore(tmp_path / "proposals.json")
+    proposal = proposals.create_proposal(
+        message_id=2109136661,
+        group_id=1076794521,
+        proposer_qq=3623213187,
+        target_qq=2237499852,
+        alias="骚a+",
+        approve_emoji_id="26",
+        reject_emoji_id="66",
+    )
+    proposal_store.add(proposal)
+
+    class FakeBot:
+        self_id = "1940196378"
+        adapter = SimpleNamespace(get_name=lambda: "OneBot V11")
+        config = SimpleNamespace(superusers={"1669790626"})
+
+        async def call_api(self, api, **data):
+            assert api == "get_emoji_likes"
+            voters = (
+                [{"user_id": "1669790626"}]
+                if data["emoji_id"] == proposal.reject_emoji_id
+                else []
+            )
+            return {"emoji_like_list": voters}
+
+    monkeypatch.setattr(package, "registry", registry)
+    monkeypatch.setattr(package, "proposal_store", proposal_store)
+
+    await package._recover_pending_proposals(FakeBot())
+
+    assert proposal_store.all() == []
+    assert registry.get_alias_owner(proposal.alias) is None

@@ -11,6 +11,9 @@ import nonebot_plugin_localstore as store
 from .storage import normalize_alias
 
 
+PROPOSAL_TTL_SECONDS = 12 * 60 * 60
+
+
 @dataclass(frozen=True, slots=True)
 class AliasProposal:
     message_id: int
@@ -124,6 +127,19 @@ class ProposalStore:
         if proposal is not None:
             self._save()
         return proposal
+
+    def expire(self, *, now: int | None = None) -> list[AliasProposal]:
+        current_time = int(time.time() if now is None else now)
+        expired = [
+            proposal
+            for proposal in self._proposals.values()
+            if proposal.created_at + PROPOSAL_TTL_SECONDS <= current_time
+        ]
+        for proposal in expired:
+            self._proposals.pop((proposal.group_id, proposal.message_id), None)
+        if expired:
+            self._save()
+        return expired
 
 
 def parse_reaction_notice(event: Any) -> ReactionNotice | None:
