@@ -1590,7 +1590,7 @@ dependencies = [
 [[package]]
 name = "nonebot-plugin-steam-game-status"
 version = "0.2.6"
-source = { git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec#0133af1d6d3d055f0ff9c80f4f57cd580a274bec" }
+source = { git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=4209a03ed793451c50b22b5e20c3d8885edb08f5#4209a03ed793451c50b22b5e20c3d8885edb08f5" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "nonebot-adapter-onebot" },
@@ -2442,7 +2442,7 @@ requires-dist = [
     { name = "nonebot-plugin-orm", extras = ["default"], specifier = ">=0.8.2" },
     { name = "nonebot-plugin-parser", extras = ["ytdlp"], git = "https://github.com/trytodupe/nonebot-plugin-parser?rev=1197ff319f5fbc9ea9f6056f36d3080461a1e133" },
     { name = "nonebot-plugin-status", git = "https://github.com/trytodupe/plugin-status?rev=b64c2a62b004e339ac4c975b63b7a6253c8abeab" },
-    { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=0133af1d6d3d055f0ff9c80f4f57cd580a274bec" },
+    { name = "nonebot-plugin-steam-game-status", git = "https://github.com/trytodupe/nonebot_plugin_steam_game_status?rev=4209a03ed793451c50b22b5e20c3d8885edb08f5" },
     { name = "nonebot-plugin-tortoise-orm", git = "https://github.com/trytodupe/nonebot-plugin-tortoise-orm?rev=135b31627a195811fd3030faeb9e5e5911fc2c79" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.9.0" },
     { name = "nonebot-plugin-wordcloud", specifier = ">=0.9.0" },
