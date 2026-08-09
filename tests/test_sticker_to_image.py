@@ -214,7 +214,7 @@ async def test_handle_sticker_ignores_non_matching_event(sticker_to_image_module
 
 
 @pytest.mark.asyncio
-async def test_handle_private_sticker_replies_with_plain_image(sticker_to_image_module, monkeypatch):
+async def test_handle_private_sticker_replies_with_file(sticker_to_image_module, monkeypatch):
     module = sticker_to_image_module
     captured = {}
 
@@ -232,8 +232,9 @@ async def test_handle_private_sticker_replies_with_plain_image(sticker_to_image_
 
     await module.handle_sticker(event)
 
-    assert captured["message"].type == "image"
+    assert captured["message"].type == "file"
     assert captured["message"].data["file"] == "https://example.com/private.jpg"
+    assert captured["message"].data["name"] == "sticker.gif"
 
 
 @pytest.mark.asyncio

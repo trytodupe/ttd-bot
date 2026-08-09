@@ -237,6 +237,7 @@ def test_run_check_broadcasts_preset_changes_only_to_configured_groups(
                 "last_status": "offline",
                 "last_seen_online_at": 700.0,
                 "consecutive_failures": 0,
+                "consecutive_successes": 4,
             }
         },
     }
@@ -293,6 +294,7 @@ def test_handle_status_broadcasts_preset_change_to_configured_groups(
                 "last_status": "offline",
                 "last_seen_online_at": 700.0,
                 "consecutive_failures": 0,
+                "consecutive_successes": 4,
             }
         },
     }
@@ -337,6 +339,8 @@ def test_run_check_broadcasts_preset_player_changes_to_configured_groups(
     module = mc_server_checker_module
     module._PLAYER_ONLINE_PLAYERS.clear()
     module._PLAYER_LAST_OFFLINE_AT.clear()
+    module._PLAYER_PENDING_JOINS.clear()
+    module._PLAYER_PENDING_LEAVES.clear()
 
     monkeypatch.setattr(
         module,
@@ -354,15 +358,16 @@ def test_run_check_broadcasts_preset_player_changes_to_configured_groups(
         "groups": {},
         "presets": {
             "hsmc": {
-                "last_status": "offline",
+                "last_status": "online",
                 "last_seen_online_at": 700.0,
                 "consecutive_failures": 0,
+                "consecutive_successes": 5,
             }
         },
     }
     sent_messages: list[tuple[int, str]] = []
     call_count = 0
-    times = iter([1000.0, 1300.0])
+    times = iter([1000.0, 1300.0, 1300.0 + module._PLAYER_DEBOUNCE_SECONDS])
 
     async def fake_check_server(ip: str):
         nonlocal call_count
@@ -375,7 +380,7 @@ def test_run_check_broadcasts_preset_player_changes_to_configured_groups(
                 players_online=2,
                 player_sample=["Alice", "Bob"],
             )
-        if call_count == 2:
+        if call_count in {2, 3}:
             return module.ServerCheckResult(
                 ip=ip,
                 online=True,
@@ -407,10 +412,15 @@ def test_run_check_broadcasts_preset_player_changes_to_configured_groups(
             only_online_servers=True,
         )
     )
+    asyncio.run(
+        module._run_check(
+            send_changes=True,
+            include_player_changes=True,
+            only_online_servers=True,
+        )
+    )
 
     assert sent_messages == [
-        (10001, "[+] server Private HSMC | offline for: 5m"),
-        (10002, "[+] server Private HSMC | offline for: 5m"),
         (10001, "[-] Bob Private HSMC | online for: 5m"),
         (10002, "[-] Bob Private HSMC | online for: 5m"),
     ]
@@ -493,8 +503,10 @@ def test_player_diff_messages_ignore_names_with_spaces(mc_server_checker_module)
         players_online=0,
         player_sample=[],
     )
-    assert module._build_player_diff_messages(group_id, leave, now=1059.0) == []
-    assert module._build_player_diff_messages(group_id, leave, now=1060.0) == [
+    assert module._build_player_diff_messages(group_id, leave, now=1060.0) == []
+    assert module._build_player_diff_messages(
+        group_id, leave, now=1060.0 + module._PLAYER_DEBOUNCE_SECONDS
+    ) == [
         "[-] Alice c.example:25565 | online for: 1m"
     ]
 
@@ -561,9 +573,9 @@ def test_player_diff_messages_require_debounce_for_join_and_leave(
         player_sample=["Alice"],
     )
     assert module._build_player_diff_messages(group_id, rejoin, now=1120.0) == []
-    assert module._build_player_diff_messages(group_id, rejoin, now=1149.0) == []
-    assert module._build_player_diff_messages(group_id, rejoin, now=1150.0) == [
-        "[+] Alice d.example:25565 | offline for: 30s"
+    assert module._build_player_diff_messages(group_id, rejoin, now=1179.0) == []
+    assert module._build_player_diff_messages(group_id, rejoin, now=1180.0) == [
+        "[+] Alice d.example:25565 | offline for: 1m30s"
     ]
 
 

@@ -12,6 +12,11 @@ import pytest
 from datetime import datetime, timedelta, timezone
 
 
+pytestmark = pytest.mark.skip(
+    reason="nonebot-plugin-learning-chat is not enabled in this deployment"
+)
+
+
 # UTC+8 timezone for testing
 TZ_UTC8 = timezone(timedelta(hours=8))
 

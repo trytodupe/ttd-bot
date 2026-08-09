@@ -7,6 +7,11 @@ import nonebot
 import pytest
 
 
+pytestmark = pytest.mark.skip(
+    reason="plugin is intentionally disabled by its leading underscore"
+)
+
+
 @pytest.fixture(scope="module")
 def quickmatch_query_module():
     try:

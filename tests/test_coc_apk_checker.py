@@ -274,7 +274,7 @@ def test_build_http_client_uses_configured_proxy(coc_apk_checker_module, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_check_coc_apk_update_skips_when_latest_file_exists(
+async def test_check_coc_apk_update_retries_upload_when_latest_file_exists(
     coc_apk_checker_module, monkeypatch, tmp_path
 ):
     module = coc_apk_checker_module
@@ -327,11 +327,12 @@ async def test_check_coc_apk_update_skips_when_latest_file_exists(
 
     assert sent_messages == []
     assert download_calls == []
-    assert upload_calls == []
+    assert upload_calls == [True]
+    assert "18.200.19" in module._uploaded_versions
 
 
 @pytest.mark.asyncio
-async def test_check_coc_apk_update_skips_when_plus_named_file_exists(
+async def test_check_coc_apk_update_retries_upload_when_plus_named_file_exists(
     coc_apk_checker_module, monkeypatch, tmp_path
 ):
     module = coc_apk_checker_module
@@ -384,7 +385,8 @@ async def test_check_coc_apk_update_skips_when_plus_named_file_exists(
 
     assert sent_messages == []
     assert download_calls == []
-    assert upload_calls == []
+    assert upload_calls == [True]
+    assert "18.367.1" in module._uploaded_versions
 
 
 @pytest.mark.asyncio

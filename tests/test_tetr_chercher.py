@@ -26,7 +26,8 @@ def tetr_chercher_modules():
     except ValueError:
         pass
 
-    nonebot.load_plugin("nonebot_plugin_localstore")
+    if nonebot.get_plugin("nonebot_plugin_localstore") is None:
+        nonebot.load_plugin("nonebot_plugin_localstore")
 
     plugin_dir = Path(__file__).resolve().parents[1] / "src" / "plugins"
     plugin_dir_text = str(plugin_dir)
@@ -283,11 +284,11 @@ def test_handle_query_formats_bound_user_stats(tetr_chercher_modules, tmp_path, 
     assert "1,234.56 TR±3.21, S段" in message
     assert "#1,234" in message
     assert "US #56" in message
-    assert f"Lv.{_expected_level(9999)} (9,999 XP)" in message
+    assert f"9,999 Exp ( Lv.{_expected_level(9999)} ) 玩家经验" in message
     assert "12.345s 40L成绩" in message
     assert "6,789 Blitz成绩" in message
-    assert "42 Zen分数 (Lv.7)" in message
-    assert "1小时 1分钟 1秒" in message
+    assert "42 ( Lv.7 ) Zen分数" in message
+    assert "1 小时 1 分钟 1 秒" in message
 
 
 # ── Query: 24h diff ──────────────────────────────────────────────────────
@@ -327,11 +328,11 @@ def test_handle_query_diff_24h(tetr_chercher_modules, tmp_path, monkeypatch):
     # TR diff: 1234.56 - 1100.00 = 134.56
     assert "(↑134.56)" in message
     # XP diff: 9999 - 9000 = 999
-    assert "(↑999.00)" in message
+    assert "(+999)" in message
     # standing diff: 1234 - 2000 = -766, improvement → (↑766)
     assert "(↑766)" in message
     # playtime diff: 3661 - 3000 = 661
-    assert "(↑661.00)" in message
+    assert "(+661)" in message
 
 
 # ── Query: no data (unranked) ────────────────────────────────────────────
@@ -377,4 +378,4 @@ def test_handle_query_unranked_shows_placeholder(tetr_chercher_modules, tmp_path
     assert "无40L数据" in message
     assert "无BLITZ数据" in message
     assert "无ZEN数据" in message
-    assert f"Lv.{_expected_level(100)} (100 XP)" in message
+    assert f"100 Exp ( Lv.{_expected_level(100)} ) 玩家经验" in message

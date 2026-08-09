@@ -20,6 +20,11 @@ from unittest.mock import patch
 import pytest
 
 
+pytestmark = pytest.mark.skip(
+    reason="nonebot-plugin-learning-chat is not enabled in this deployment"
+)
+
+
 # Mock ChatMessage for testing
 @dataclass
 class MockMessage:
