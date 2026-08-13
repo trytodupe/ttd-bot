@@ -5,18 +5,33 @@ import asyncio
 import json
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote_plus
 
 import httpx
-from nonebot import get_bots, get_driver, get_plugin_config, logger as nonebot_logger, require
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot import (
+    get_bots,
+    get_driver,
+    get_plugin_config,
+    logger as nonebot_logger,
+    on,
+    require,
+)
+from nonebot.adapters.onebot.v11 import Bot, Event
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
 
 from .config import Config
-from .sources import CocVersion, DownloadedApk, UploadResult, create_source
+from .sources import (
+    CocVersion,
+    DownloadedApk,
+    UploadResult,
+    UploadStatus,
+    create_source,
+)
 
 logger = nonebot_logger
 
@@ -39,11 +54,20 @@ _CHECK_LOCK = asyncio.Lock()
 _FAILURE_COUNT_BY_KEY: dict[str, int] = {}
 _ALERT_FAILURE_THRESHOLD = 5
 _uploaded_versions: set[str] = set()
-_upload_timeout_count: dict[str, int] = {}
-_MAX_UPLOAD_TIMEOUTS = 2
 _UPLOADED_MARKER = ".uploaded_versions.json"
 
 driver = get_driver()
+
+
+@dataclass
+class PendingUpload:
+    group_id: int
+    filename: str
+    file_size: int
+    receipt: asyncio.Future[str]
+
+
+_pending_upload: PendingUpload | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -272,32 +296,240 @@ def _extract_upload_error(result: Any) -> str:
     return str(result)
 
 
+def _extract_upload_file_id(result: Any) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    file_id = str(result.get("file_id", "")).strip()
+    if file_id:
+        return file_id
+    nested_data = result.get("data")
+    if isinstance(nested_data, dict):
+        file_id = str(nested_data.get("file_id", "")).strip()
+        if file_id:
+            return file_id
+    return None
+
+
+def _matches_uploaded_filename(expected: str, actual: str) -> bool:
+    return actual == expected or re.fullmatch(
+        rf"{re.escape(expected)}\.\d+", actual
+    ) is not None
+
+
+def _matching_file_id(
+    file_data: Any,
+    *,
+    filename: str,
+    file_size: int,
+) -> str | None:
+    if not isinstance(file_data, dict):
+        return None
+    actual_name = str(
+        file_data.get("file_name")
+        or file_data.get("name")
+        or file_data.get("file")
+        or ""
+    ).strip()
+    if not _matches_uploaded_filename(filename, actual_name):
+        return None
+    try:
+        actual_size = int(file_data.get("file_size") or file_data.get("size"))
+    except (TypeError, ValueError):
+        return None
+    if actual_size != file_size:
+        return None
+    file_id = str(file_data.get("file_id") or file_data.get("id") or "").strip()
+    return file_id or None
+
+
+async def _find_uploaded_group_file(
+    bot: Bot,
+    group_id: int,
+    apk: DownloadedApk,
+) -> str | None:
+    result = await bot.call_api(
+        "get_group_root_files",
+        _timeout=30,
+        group_id=group_id,
+    )
+    if not isinstance(result, dict) or not isinstance(result.get("files"), list):
+        raise RuntimeError("get_group_root_files returned an invalid response")
+
+    file_size = apk.path.stat().st_size
+    for file_data in result["files"]:
+        if not isinstance(file_data, dict):
+            continue
+        if str(file_data.get("uploader", "")).strip() != str(bot.self_id):
+            continue
+        if file_id := _matching_file_id(
+            file_data,
+            filename=apk.filename,
+            file_size=file_size,
+        ):
+            return file_id
+    return None
+
+
+def _handle_message_sent_event(event: Event) -> None:
+    pending = _pending_upload
+    if pending is None or pending.receipt.done():
+        return
+    if (
+        event.post_type != "message_sent"
+        or getattr(event, "message_type", None) != "group"
+        or getattr(event, "group_id", None) != pending.group_id
+        or str(getattr(event, "user_id", "")) != str(event.self_id)
+    ):
+        return
+
+    message = getattr(event, "message", None)
+    if not isinstance(message, list):
+        return
+    for segment in message:
+        if not isinstance(segment, dict) or segment.get("type") != "file":
+            continue
+        if file_id := _matching_file_id(
+            segment.get("data"),
+            filename=pending.filename,
+            file_size=pending.file_size,
+        ):
+            pending.receipt.set_result(file_id)
+            return
+
+
+def _message_sent_result(pending: PendingUpload) -> UploadResult | None:
+    if not pending.receipt.done() or pending.receipt.cancelled():
+        return None
+    return UploadResult(
+        status=UploadStatus.CONFIRMED,
+        detail="confirmed by message_sent",
+        file_id=pending.receipt.result(),
+    )
+
+
+message_sent_matcher = on("message_sent", priority=1, block=False)
+
+
+@message_sent_matcher.handle()
+async def _receive_message_sent(event: Event) -> None:
+    _handle_message_sent_event(event)
+
+
 async def _upload_group_file(group_id: int, apk: DownloadedApk) -> UploadResult:
+    global _pending_upload
+
     bot = _select_bot()
     if bot is None:
-        return UploadResult(ok=False, detail="No available bot")
+        return UploadResult(status=UploadStatus.FAILED, detail="No available bot")
 
     try:
-        result = await bot.call_api(
+        existing_file_id = await _find_uploaded_group_file(bot, group_id, apk)
+    except Exception as exc:
+        return UploadResult(
+            status=UploadStatus.UNKNOWN,
+            detail=f"group file preflight failed: {type(exc).__name__}: {exc}",
+        )
+    if existing_file_id:
+        return UploadResult(
+            status=UploadStatus.CONFIRMED,
+            detail="confirmed by group file listing",
+            file_id=existing_file_id,
+        )
+
+    pending = PendingUpload(
+        group_id=group_id,
+        filename=apk.filename,
+        file_size=apk.path.stat().st_size,
+        receipt=asyncio.get_running_loop().create_future(),
+    )
+    _pending_upload = pending
+    upload_task = asyncio.create_task(
+        bot.call_api(
             "upload_group_file",
             _timeout=600,
             group_id=group_id,
             file=str(apk.path),
             name=apk.filename,
         )
-    except Exception as exc:
-        detail = f"{type(exc).__name__}: {exc}"
-        # Large file uploads may succeed server-side but the WebSocket
-        # response times out. Treat timeout as ambiguous — don't
-        # announce failure to the group, just retry silently next cycle.
-        if "timeout" in detail.lower():
-            return UploadResult(ok=False, detail="")
-        return UploadResult(ok=False, detail=detail)
+    )
 
-    error_detail = _extract_upload_error(result)
-    if error_detail:
-        return UploadResult(ok=False, detail=error_detail)
-    return UploadResult(ok=True, detail="")
+    try:
+        await asyncio.wait(
+            {upload_task, pending.receipt},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if message_sent_result := _message_sent_result(pending):
+            return message_sent_result
+
+        try:
+            result = upload_task.result()
+        except Exception as exc:
+            try:
+                existing_file_id = await _find_uploaded_group_file(bot, group_id, apk)
+            except Exception as reconcile_exc:
+                if message_sent_result := _message_sent_result(pending):
+                    return message_sent_result
+                return UploadResult(
+                    status=UploadStatus.UNKNOWN,
+                    detail=(
+                        f"{type(exc).__name__}: {exc}; reconciliation failed: "
+                        f"{type(reconcile_exc).__name__}: {reconcile_exc}"
+                    ),
+                )
+            if message_sent_result := _message_sent_result(pending):
+                return message_sent_result
+            if existing_file_id:
+                return UploadResult(
+                    status=UploadStatus.CONFIRMED,
+                    detail="confirmed by group file listing",
+                    file_id=existing_file_id,
+                )
+            if isinstance(exc, ActionFailed):
+                return UploadResult(
+                    status=UploadStatus.FAILED,
+                    detail=f"{type(exc).__name__}: {exc}",
+                )
+            return UploadResult(
+                status=UploadStatus.UNKNOWN,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+
+        if file_id := _extract_upload_file_id(result):
+            return UploadResult(
+                status=UploadStatus.CONFIRMED,
+                detail="confirmed by upload API",
+                file_id=file_id,
+            )
+
+        try:
+            existing_file_id = await _find_uploaded_group_file(bot, group_id, apk)
+        except Exception as exc:
+            if message_sent_result := _message_sent_result(pending):
+                return message_sent_result
+            return UploadResult(
+                status=UploadStatus.UNKNOWN,
+                detail=f"upload response missing file_id; reconciliation failed: {exc}",
+            )
+        if message_sent_result := _message_sent_result(pending):
+            return message_sent_result
+        if existing_file_id:
+            return UploadResult(
+                status=UploadStatus.CONFIRMED,
+                detail="confirmed by group file listing",
+                file_id=existing_file_id,
+            )
+        return UploadResult(
+            status=UploadStatus.UNKNOWN,
+            detail="upload response missing file_id and group file was not found",
+        )
+    finally:
+        if _pending_upload is pending:
+            _pending_upload = None
+        if not pending.receipt.done():
+            pending.receipt.cancel()
+        if not upload_task.done():
+            upload_task.cancel()
+            await asyncio.gather(upload_task, return_exceptions=True)
 
 
 async def _announce_upload_failure(group_id: int, detail: str) -> None:
@@ -367,40 +599,29 @@ async def check_coc_apk_update() -> None:
                 int(plugin_config.coc_checker_group_id),
                 downloaded_apk,
             )
-            if upload_result.ok:
+            if upload_result.status is UploadStatus.CONFIRMED:
                 _uploaded_versions.add(latest_version.version_name)
                 _save_uploaded_versions(shared_dir)
                 _reset_failure_count("coc-checker-check-failed")
-                logger.info("Uploaded CoC APK successfully: {}", downloaded_apk.filename)
+                logger.info(
+                    "Confirmed CoC APK upload: {} (file_id={}, {})",
+                    downloaded_apk.filename,
+                    upload_result.file_id or "unknown",
+                    upload_result.detail,
+                )
                 return
 
-            if upload_result.detail:
+            if upload_result.status is UploadStatus.FAILED:
                 logger.warning("Failed to upload CoC APK: {}", upload_result.detail)
                 await _announce_upload_failure(
                     int(plugin_config.coc_checker_group_id),
                     upload_result.detail,
                 )
             else:
-                # Timeout — ambiguous, retry silently next cycle.
-                # After repeated timeouts, assume it went through to
-                # avoid spamming the group with duplicate uploads.
-                timeout_count = _upload_timeout_count.get(
-                    latest_version.version_name, 0
-                ) + 1
-                _upload_timeout_count[latest_version.version_name] = timeout_count
-                if timeout_count >= _MAX_UPLOAD_TIMEOUTS:
-                    _uploaded_versions.add(latest_version.version_name)
-                    _save_uploaded_versions(shared_dir)
-                    logger.info(
-                        "CoC APK upload timed out {}x, assuming success",
-                        timeout_count,
-                    )
-                else:
-                    logger.warning(
-                        "CoC APK upload timed out ({}/{}), will retry",
-                        timeout_count,
-                        _MAX_UPLOAD_TIMEOUTS,
-                    )
+                logger.warning(
+                    "CoC APK upload outcome is unknown; will reconcile before retry: {}",
+                    upload_result.detail,
+                )
         except Exception as exc:
             logger.opt(exception=True).error("CoC APK check failed: {}", exc)
             await _maybe_alert_after_failure(

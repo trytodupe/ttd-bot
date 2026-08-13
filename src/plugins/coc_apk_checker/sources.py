@@ -11,6 +11,7 @@ then register it in _SOURCE_REGISTRY.
 import json
 import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, unquote_plus
@@ -42,10 +43,17 @@ class DownloadedApk:
     path: Path
 
 
+class UploadStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class UploadResult:
-    ok: bool
-    detail: str
+    status: UploadStatus
+    detail: str = ""
+    file_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

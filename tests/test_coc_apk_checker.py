@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import sys
 from pathlib import Path
@@ -311,7 +312,7 @@ async def test_check_coc_apk_update_retries_upload_when_latest_file_exists(
 
     async def fake_upload_group_file(_group_id, _apk):
         upload_calls.append(True)
-        return module.UploadResult(ok=True, detail="")
+        return module.UploadResult(status=module.UploadStatus.CONFIRMED)
 
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
@@ -369,7 +370,7 @@ async def test_check_coc_apk_update_retries_upload_when_plus_named_file_exists(
 
     async def fake_upload_group_file(_group_id, _apk):
         upload_calls.append(True)
-        return module.UploadResult(ok=True, detail="")
+        return module.UploadResult(status=module.UploadStatus.CONFIRMED)
 
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
@@ -428,7 +429,7 @@ async def test_check_coc_apk_update_sends_version_message_and_uploads(
 
     async def fake_upload_group_file(group_id, apk):
         uploaded.append((group_id, apk))
-        return module.UploadResult(ok=True, detail="")
+        return module.UploadResult(status=module.UploadStatus.CONFIRMED)
 
     async def fake_send_group_message(group_id, message):
         sent_messages.append((group_id, message))
@@ -452,6 +453,369 @@ async def test_check_coc_apk_update_sends_version_message_and_uploads(
         )
     ]
     assert uploaded == [(607572668, downloaded)]
+
+
+@pytest.mark.asyncio
+async def test_check_coc_apk_update_does_not_persist_unknown_upload(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    version_name = "99.1.2"
+    apk_path = shared_dir / f"Clash_of_Clans_{version_name}_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+
+    module._uploaded_versions.discard(version_name)
+    monkeypatch.setattr(module, "_should_enable_checker", lambda: True)
+    monkeypatch.setattr(module, "_shared_dir", lambda: shared_dir)
+    monkeypatch.setattr(
+        module.plugin_config,
+        "coc_checker_group_id",
+        607572668,
+        raising=False,
+    )
+
+    async def fake_get_latest_version(_client):
+        return module.CocVersion(
+            version_name=version_name,
+            version_code="99001002",
+            update_date="2026-08-11T05:54:25Z",
+        )
+
+    async def fake_upload_group_file(_group_id, _apk):
+        return module.UploadResult(
+            status=module.UploadStatus.UNKNOWN,
+            detail="upload outcome could not be confirmed",
+        )
+
+    monkeypatch.setattr(
+        module._APK_SOURCE, "get_latest_version", fake_get_latest_version
+    )
+    monkeypatch.setattr(module, "_upload_group_file", fake_upload_group_file)
+
+    await module.check_coc_apk_update()
+
+    assert version_name not in module._uploaded_versions
+    assert not (shared_dir / module._UPLOADED_MARKER).exists()
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_confirms_from_message_sent(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+    upload_started = asyncio.Event()
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            if api == "get_group_root_files":
+                return {"files": []}
+            if api == "upload_group_file":
+                upload_started.set()
+                await asyncio.Future()
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    upload_task = asyncio.create_task(module._upload_group_file(607572668, apk))
+    await asyncio.wait_for(upload_started.wait(), timeout=1)
+    event = module.Event.model_validate(
+        {
+            "time": 1786442842,
+            "post_type": "message_sent",
+            "message_type": "group",
+            "group_id": 607572668,
+            "self_id": 1940196378,
+            "user_id": 1940196378,
+            "message": [
+                {
+                    "type": "file",
+                    "data": {
+                        "file_id": "/confirmed-by-event",
+                        "name": f"{apk.filename}.1",
+                        "size": apk_path.stat().st_size,
+                    },
+                }
+            ],
+        }
+    )
+    module._handle_message_sent_event(event)
+
+    result = await asyncio.wait_for(upload_task, timeout=1)
+
+    assert result.status is module.UploadStatus.CONFIRMED
+    assert result.file_id == "/confirmed-by-event"
+
+
+@pytest.mark.asyncio
+async def test_message_sent_does_not_confirm_another_users_file(
+    coc_apk_checker_module, monkeypatch
+):
+    module = coc_apk_checker_module
+    receipt = asyncio.get_running_loop().create_future()
+    pending = module.PendingUpload(
+        group_id=607572668,
+        filename="Clash_of_Clans_99.1.2_APKCombo.apk",
+        file_size=3,
+        receipt=receipt,
+    )
+    monkeypatch.setattr(module, "_pending_upload", pending)
+    event = module.Event.model_validate(
+        {
+            "time": 1786442842,
+            "post_type": "message_sent",
+            "message_type": "group",
+            "group_id": 607572668,
+            "self_id": 1940196378,
+            "user_id": 123456789,
+            "message": [
+                {
+                    "type": "file",
+                    "data": {
+                        "file_id": "/another-users-file",
+                        "name": f"{pending.filename}.1",
+                        "size": pending.file_size,
+                    },
+                }
+            ],
+        }
+    )
+
+    module._handle_message_sent_event(event)
+
+    assert not receipt.done()
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_confirms_from_api_file_id(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            if api == "get_group_root_files":
+                return {"files": []}
+            if api == "upload_group_file":
+                return {"file_id": "/confirmed-by-api"}
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    result = await module._upload_group_file(607572668, apk)
+
+    assert result.status is module.UploadStatus.CONFIRMED
+    assert result.file_id == "/confirmed-by-api"
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_reconciles_timeout_with_group_files(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+    list_calls = 0
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            nonlocal list_calls
+            if api == "get_group_root_files":
+                list_calls += 1
+                if list_calls == 1:
+                    return {"files": []}
+                return {
+                    "files": [
+                        {
+                            "file_id": "/confirmed-by-list",
+                            "file_name": f"{apk.filename}.1",
+                            "file_size": apk_path.stat().st_size,
+                            "uploader": int(self.self_id),
+                        }
+                    ]
+                }
+            if api == "upload_group_file":
+                raise TimeoutError("WebSocket call api upload_group_file timeout")
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    result = await module._upload_group_file(607572668, apk)
+
+    assert result.status is module.UploadStatus.CONFIRMED
+    assert result.file_id == "/confirmed-by-list"
+    assert list_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_accepts_message_sent_during_reconciliation(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+    reconcile_started = asyncio.Event()
+    finish_reconcile = asyncio.Event()
+    list_calls = 0
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            nonlocal list_calls
+            if api == "get_group_root_files":
+                list_calls += 1
+                if list_calls == 2:
+                    reconcile_started.set()
+                    await finish_reconcile.wait()
+                return {"files": []}
+            if api == "upload_group_file":
+                raise TimeoutError("WebSocket call api upload_group_file timeout")
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    upload_task = asyncio.create_task(module._upload_group_file(607572668, apk))
+    await asyncio.wait_for(reconcile_started.wait(), timeout=1)
+    event = module.Event.model_validate(
+        {
+            "time": 1786442842,
+            "post_type": "message_sent",
+            "message_type": "group",
+            "group_id": 607572668,
+            "self_id": 1940196378,
+            "user_id": 1940196378,
+            "message": [
+                {
+                    "type": "file",
+                    "data": {
+                        "file_id": "/confirmed-during-reconcile",
+                        "name": f"{apk.filename}.1",
+                        "size": apk_path.stat().st_size,
+                    },
+                }
+            ],
+        }
+    )
+    module._handle_message_sent_event(event)
+    finish_reconcile.set()
+
+    result = await asyncio.wait_for(upload_task, timeout=1)
+
+    assert result.status is module.UploadStatus.CONFIRMED
+    assert result.file_id == "/confirmed-during-reconcile"
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_keeps_absent_timeout_unknown(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            if api == "get_group_root_files":
+                return {"files": []}
+            if api == "upload_group_file":
+                raise TimeoutError("WebSocket call api upload_group_file timeout")
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    result = await module._upload_group_file(607572668, apk)
+
+    assert result.status is module.UploadStatus.UNKNOWN
+    assert result.file_id is None
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_does_not_reupload_existing_group_file(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+    upload_calls = 0
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            nonlocal upload_calls
+            if api == "get_group_root_files":
+                return {
+                    "files": [
+                        {
+                            "file_id": "/already-uploaded",
+                            "file_name": f"{apk.filename}.1",
+                            "file_size": apk_path.stat().st_size,
+                            "uploader": int(self.self_id),
+                        }
+                    ]
+                }
+            if api == "upload_group_file":
+                upload_calls += 1
+                return {"file_id": "/duplicate"}
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    result = await module._upload_group_file(607572668, apk)
+
+    assert result.status is module.UploadStatus.CONFIRMED
+    assert result.file_id == "/already-uploaded"
+    assert upload_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_does_not_upload_when_preflight_fails(
+    coc_apk_checker_module, monkeypatch, tmp_path
+):
+    module = coc_apk_checker_module
+    apk_path = tmp_path / "Clash_of_Clans_99.1.2_APKCombo.apk"
+    apk_path.write_bytes(b"apk")
+    apk = module.DownloadedApk(filename=apk_path.name, path=apk_path)
+    upload_calls = 0
+
+    class FakeBot:
+        self_id = "1940196378"
+
+        async def call_api(self, api, **kwargs):
+            nonlocal upload_calls
+            if api == "get_group_root_files":
+                raise TimeoutError("group file listing timed out")
+            if api == "upload_group_file":
+                upload_calls += 1
+            raise AssertionError(f"unexpected API: {api}")
+
+    monkeypatch.setattr(module, "_select_bot", lambda: FakeBot())
+
+    result = await module._upload_group_file(607572668, apk)
+
+    assert result.status is module.UploadStatus.UNKNOWN
+    assert "preflight failed" in result.detail
+    assert upload_calls == 0
 
 
 @pytest.mark.asyncio
@@ -489,7 +853,7 @@ async def test_check_coc_apk_update_reports_upload_failure(
 
     async def fake_upload_group_file(_group_id, _apk):
         return module.UploadResult(
-            ok=False,
+            status=module.UploadStatus.FAILED,
             detail="ENOENT: no such file or directory, open '/shared/missing.apk'",
         )
 
@@ -659,7 +1023,7 @@ async def test_check_coc_apk_update_resets_failure_counter_after_success(
         return module.DownloadedApk(filename=target.name, path=target)
 
     async def fake_upload_group_file(_group_id, _apk):
-        return module.UploadResult(ok=True, detail="")
+        return module.UploadResult(status=module.UploadStatus.CONFIRMED)
 
     async def fake_send_group_message(_group_id, _message):
         return None
