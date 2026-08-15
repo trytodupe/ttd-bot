@@ -6,6 +6,7 @@ mocking only the clock and the OneBot API boundary.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import sys
 from pathlib import Path
@@ -111,6 +112,7 @@ async def test_valid_boop_sends_private_and_starts_cooldown(
 ):
     module = boop_module
     module._cooldowns.clear()
+    module._sender_locks.clear()
     fake_time = [1000.0]
     monkeypatch.setattr(
         module, "_time", type("_T", (), {"monotonic": staticmethod(lambda: fake_time[0])})()
@@ -130,6 +132,58 @@ async def test_valid_boop_sends_private_and_starts_cooldown(
         await ctx.run()
 
     assert module._cooldowns[111] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_boops_from_same_sender_are_serialized(
+    boop_module, monkeypatch
+):
+    module = boop_module
+    module._cooldowns.clear()
+    module._sender_locks.clear()
+    monkeypatch.setattr(
+        module, "_time", type("_T", (), {"monotonic": staticmethod(lambda: 1000.0)})()
+    )
+
+    api_started = asyncio.Event()
+    release_api = asyncio.Event()
+    api_targets: list[int] = []
+    replies: list[str] = []
+
+    class FakeBot:
+        async def call_api(self, api: str, **data) -> None:
+            assert api == "send_private_msg"
+            api_targets.append(data["user_id"])
+            api_started.set()
+            await release_api.wait()
+
+    class FakeMatcher:
+        async def finish(self, message: str) -> None:
+            replies.append(message)
+
+    first = _make_event(
+        user_id=111,
+        message=Message([MessageSegment.text("/boop "), MessageSegment.at(678)]),
+    )
+    second = _make_event(
+        user_id=111,
+        message=Message([MessageSegment.text("/boop "), MessageSegment.at(888)]),
+    )
+    bot = FakeBot()
+    matcher = FakeMatcher()
+
+    first_task = asyncio.create_task(module._handle_boop(bot, first, matcher))
+    await api_started.wait()
+    second_task = asyncio.create_task(module._handle_boop(bot, second, matcher))
+    await asyncio.sleep(0)
+
+    assert api_targets == [678]
+
+    release_api.set()
+    await asyncio.gather(first_task, second_task)
+
+    assert api_targets == [678]
+    assert replies == ["Boop! 已发送给 678", module._COOLDOWN_NOTICE]
 
 
 # ===================================================================

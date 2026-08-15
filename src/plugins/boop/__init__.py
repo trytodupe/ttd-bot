@@ -12,6 +12,7 @@ Rules:
 
 from __future__ import annotations
 
+import asyncio
 import re as _re
 import time as _time
 
@@ -31,6 +32,7 @@ _COOLDOWN_SECONDS = 10
 _COOLDOWN_NOTICE = "你刚 Boop 过别人，冷却中哦~"
 
 _cooldowns: dict[int, float] = {}
+_sender_locks: dict[int, asyncio.Lock] = {}
 
 _RE_BOOP = _re.compile(r"^/boop(?:\s|$)")
 
@@ -58,6 +60,14 @@ def _extract_at_targets(message: Message) -> list[int]:
     return targets
 
 
+def _get_sender_lock(user_id: int) -> asyncio.Lock:
+    lock = _sender_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _sender_locks[user_id] = lock
+    return lock
+
+
 @_matcher.handle()
 async def _handle_boop(bot: Bot, event: GroupMessageEvent, matcher: Matcher) -> None:
     at_targets = _extract_at_targets(event.message)
@@ -78,20 +88,22 @@ async def _handle_boop(bot: Bot, event: GroupMessageEvent, matcher: Matcher) -> 
         await matcher.finish(message="你不能 Boop 自己哦~")
         return
 
-    # --- Cooldown check (monotonic clock) ---
-    now = _time.monotonic()
-    last_used = _cooldowns.get(event.user_id)
-    if last_used is not None and now - last_used < _COOLDOWN_SECONDS:
-        await matcher.finish(message=_COOLDOWN_NOTICE)
-        return
+    # Serialize the cooldown check and delivery per sender so concurrent
+    # commands cannot all pass before the first successful send is recorded.
+    async with _get_sender_lock(event.user_id):
+        now = _time.monotonic()
+        last_used = _cooldowns.get(event.user_id)
+        if last_used is not None and now - last_used < _COOLDOWN_SECONDS:
+            await matcher.finish(message=_COOLDOWN_NOTICE)
+            return
 
-    # --- Send private message via the event-injected bot ---
-    try:
-        await bot.call_api("send_private_msg", user_id=target_qq, message="Boop!")
-    except Exception:
-        await matcher.finish(message="私聊发送失败，可能对方未开启私聊权限。")
-        return
+        try:
+            await bot.call_api("send_private_msg", user_id=target_qq, message="Boop!")
+        except Exception:
+            await matcher.finish(message="私聊发送失败，可能对方未开启私聊权限。")
+            return
 
-    # Cooldown consumed only on successful send
-    _cooldowns[event.user_id] = now
+        # Cooldown begins only after a successful send.
+        _cooldowns[event.user_id] = _time.monotonic()
+
     await matcher.finish(message=f"Boop! 已发送给 {target_qq}")
