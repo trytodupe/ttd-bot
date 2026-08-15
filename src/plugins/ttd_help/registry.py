@@ -243,6 +243,13 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         providers=("nonebot_plugin_moellmchats",),
         commands=("@机器人 <消息>", "ttd llm status"),
     ),
+    FeatureDoc(
+        key="counter_game",
+        title="接龙游戏",
+        description="群共享接龙游戏。任何人发送纯数字消息参与，群内从 1 开始递增接龙。",
+        providers=("counter_game",),
+        commands=("发送纯数字消息参与",),
+    ),
 )
 
 IGNORED_PROVIDERS: frozenset[str] = frozenset(
