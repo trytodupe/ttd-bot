@@ -20,6 +20,13 @@ class FeatureDoc:
 
 FEATURE_DOCS: tuple[FeatureDoc, ...] = (
     FeatureDoc(
+        key="boop",
+        title="Boop",
+        description="给群友发送一条私聊 Boop! 消息。",
+        providers=("boop",),
+        commands=("/boop @目标",),
+    ),
+    FeatureDoc(
         key="help",
         title="帮助索引",
         description="查看 ttd-bot 的功能列表和具体用法。",
@@ -235,6 +242,13 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         description="在群聊中 @ 机器人进行多轮上下文对话。",
         providers=("nonebot_plugin_moellmchats",),
         commands=("@机器人 <消息>", "ttd llm status"),
+    ),
+    FeatureDoc(
+        key="counter_game",
+        title="接龙游戏",
+        description="群共享接龙游戏。任何人发送纯数字消息参与，群内从 1 开始递增接龙。",
+        providers=("counter_game",),
+        commands=("发送纯数字消息参与",),
     ),
 )
 
