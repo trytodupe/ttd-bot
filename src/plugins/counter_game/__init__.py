@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import re
 
-from nonebot import on_message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
+from nonebot import logger, on_message
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, is_type
 
@@ -15,6 +15,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 _NUMBER_RE = re.compile(r"^\d+$")
+_SUCCESS_EMOJI_ID = "76"
 
 # Per-group previous accepted value.  Starts at 0 so the first valid number is 1.
 _group_counters: dict[int, int] = {}
@@ -60,6 +61,18 @@ async def _is_group_numeric(event: GroupMessageEvent) -> bool:
     return _is_text_only_number(event.message)
 
 
+async def _react_success(bot: Bot, message_id: int) -> None:
+    try:
+        await bot.call_api(
+            "set_msg_emoji_like",
+            message_id=message_id,
+            emoji_id=_SUCCESS_EMOJI_ID,
+            set=True,
+        )
+    except Exception as exc:
+        logger.warning("Failed to react to successful counter step: %r", exc)
+
+
 matcher = on_message(
     rule=is_type(GroupMessageEvent) & Rule(_is_group_numeric),
     priority=20,
@@ -68,7 +81,7 @@ matcher = on_message(
 
 
 @matcher.handle()
-async def handle_counter(event: GroupMessageEvent) -> None:
+async def handle_counter(bot: Bot, event: GroupMessageEvent) -> None:
     value = _parse_text_only_number(event.message)
     if value is None:
         return
@@ -81,10 +94,22 @@ async def handle_counter(event: GroupMessageEvent) -> None:
         previous = _group_counters.get(group_id, 0)
         if value == previous + 1:
             _group_counters[group_id] = value
-            return  # silent accept — nothing to send
+            success = True
+            failure_message = None
+        elif previous == 0:
+            return
+        else:
+            success = False
+            failure_message = (
+                f"接龙失败！正确数字应为 {previous + 1}，"
+                "已重置为 0，下一位请发 1。"
+            )
+            _group_counters[group_id] = 0
 
-        failure_message = f"接龙失败！正确数字应为 {previous + 1}，已重置为 0，下一位请发 1。"
-        _group_counters[group_id] = 0
+    if success:
+        await _react_success(bot, int(event.message_id))
+        return
 
     # Lock released; send the failure response.
+    assert failure_message is not None
     await matcher.finish(failure_message)

@@ -126,8 +126,18 @@ async def test_valid_boop_sends_private_and_starts_cooldown(
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -147,15 +157,20 @@ async def test_concurrent_boops_from_same_sender_are_serialized(
 
     api_started = asyncio.Event()
     release_api = asyncio.Event()
-    api_targets: list[int] = []
+    private_calls: list[dict] = []
+    reaction_calls: list[dict] = []
     replies: list[str] = []
 
     class FakeBot:
         async def call_api(self, api: str, **data) -> None:
-            assert api == "send_private_msg"
-            api_targets.append(data["user_id"])
-            api_started.set()
-            await release_api.wait()
+            if api == "send_private_msg":
+                private_calls.append(data)
+                api_started.set()
+                await release_api.wait()
+            elif api == "set_msg_emoji_like":
+                reaction_calls.append(data)
+            else:
+                raise AssertionError(f"unexpected API: {api}")
 
     class FakeMatcher:
         async def finish(self, message: str) -> None:
@@ -177,13 +192,22 @@ async def test_concurrent_boops_from_same_sender_are_serialized(
     second_task = asyncio.create_task(module._handle_boop(bot, second, matcher))
     await asyncio.sleep(0)
 
-    assert api_targets == [678]
+    assert [call["user_id"] for call in private_calls] == [678]
 
     release_api.set()
     await asyncio.gather(first_task, second_task)
 
-    assert api_targets == [678]
-    assert replies == ["Boop! 已发送给 678", module._COOLDOWN_NOTICE]
+    assert private_calls == [
+        {"user_id": 678, "group_id": 100, "message": "Boop!"}
+    ]
+    assert reaction_calls == [
+        {
+            "message_id": first.message_id,
+            "emoji_id": module._SUCCESS_EMOJI_ID,
+            "set": True,
+        }
+    ]
+    assert replies == [module._COOLDOWN_NOTICE]
 
 
 # ===================================================================
@@ -207,8 +231,18 @@ async def test_handler_uses_event_bot_for_api_call(boop_module, monkeypatch, app
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="777")
         ctx.receive_event(bot, event)
-        ctx.should_call_api("send_private_msg", {"user_id": 444, "message": "Boop!"})
-        ctx.should_call_send(event, "Boop! 已发送给 444")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 444, "group_id": 200, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -349,8 +383,18 @@ async def test_cooldown_blocks_same_sender_different_receiver(
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event1)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event1, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event1.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -394,8 +438,18 @@ async def test_different_senders_same_receiver_no_cooldown(
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event_a)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event_a, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event_a.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -403,8 +457,18 @@ async def test_different_senders_same_receiver_no_cooldown(
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event_b)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event_b, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event_b.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -436,7 +500,7 @@ async def test_api_failure_does_not_consume_cooldown(
         ctx.receive_event(bot, event)
         ctx.should_call_api(
             "send_private_msg",
-            {"user_id": 678, "message": "Boop!"},
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
             exception=RuntimeError("API failure"),
         )
         ctx.should_call_send(event, "私聊发送失败，可能对方未开启私聊权限。")
@@ -467,8 +531,18 @@ async def test_cooldown_expires_at_exact_10s(boop_module, monkeypatch, app: App)
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event1)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event1, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event1.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -483,8 +557,18 @@ async def test_cooldown_expires_at_exact_10s(boop_module, monkeypatch, app: App)
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event2)
-        ctx.should_call_api("send_private_msg", {"user_id": 888, "message": "Boop!"})
-        ctx.should_call_send(event2, "Boop! 已发送给 888")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 888, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event2.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
@@ -517,7 +601,7 @@ async def test_failed_then_success_sets_cooldown_from_success(
         ctx.receive_event(bot, event)
         ctx.should_call_api(
             "send_private_msg",
-            {"user_id": 678, "message": "Boop!"},
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
             exception=RuntimeError("API failure"),
         )
         ctx.should_call_send(event, "私聊发送失败，可能对方未开启私聊权限。")
@@ -530,8 +614,18 @@ async def test_failed_then_success_sets_cooldown_from_success(
     async with app.test_matcher(module._matcher) as ctx:
         bot = ctx.create_bot(base=Bot, self_id="999")
         ctx.receive_event(bot, event)
-        ctx.should_call_api("send_private_msg", {"user_id": 678, "message": "Boop!"})
-        ctx.should_call_send(event, "Boop! 已发送给 678")
+        ctx.should_call_api(
+            "send_private_msg",
+            {"user_id": 678, "group_id": 100, "message": "Boop!"},
+        )
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event.message_id,
+                "emoji_id": module._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+        )
         ctx.should_finished()
         await ctx.run()
 
