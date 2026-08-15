@@ -29,6 +29,67 @@ test("publication does not silently select unrelated plugin tests", () => {
   );
 });
 
+test("publication redirects bytecode for the root-owned staging script", async () => {
+  const commands: string[] = [];
+  const head = "b".repeat(40);
+  const guest = {
+    ensurePythonEnvironment: async () => "/opt/ttd-dev-agent/base-python/.venv",
+    ensureSlotDatabase: async () => undefined,
+    writeWorkspaceFile: async () => undefined,
+    checkpointWorkspace: async () => undefined,
+    runTrusted: async (_session: SessionRecord, _slot: SlotRecord, command: string) => {
+      commands.push(command);
+      if (command.includes("-- src/plugins")) {
+        return {
+          ok: true,
+          stdout: "src/plugins/example/__init__.py\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command.startsWith("find tests")) {
+        return {
+          ok: true,
+          stdout: "tests/test_example.py\n\n--changed--\ntests/test_example.py\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command === "git rev-parse HEAD") {
+        return { ok: true, stdout: `${head}\n`, stderr: "", exitCode: 0 };
+      }
+      return { ok: true, stdout: "", stderr: "", exitCode: 0 };
+    },
+  };
+  const store = {
+    setSlotHealth: () => undefined,
+    saveRelease: () => undefined,
+  };
+  const session = {
+    owner: "private:1001",
+    sessionRef: "session",
+    taskId: "task",
+    title: "test",
+    state: "active",
+    branch: "agent/task-test",
+    baseSha: "a".repeat(40),
+    stagingReleaseId: null,
+    workspace: "/workspaces/session",
+    transcriptPath: "/transcripts/session.json",
+    slotId: 0,
+    continuationOf: null,
+    createdAt: 1,
+    updatedAt: 1,
+  } satisfies SessionRecord;
+  const slot = { id: 0 } as SlotRecord;
+
+  await new ActivationManager(store as never, guest as never).activate(session, slot);
+
+  assert.ok(commands.includes(
+    "PYTHONPYCACHEPREFIX=.dev-agent/pycache python -m compileall -q src /opt/ttd-dev-agent/staging_bot.py",
+  ));
+});
+
 test("cold staging restore selects the baked environment and starts one runtime", async () => {
   const commands: string[] = [];
   const guest = {

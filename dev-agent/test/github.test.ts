@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  guestPublicationBundlePath,
   localCloneArgs,
   publicationPathspecs,
   publicationPushArgs,
@@ -17,6 +18,13 @@ test("local publication clone trusts both the worktree and its git directory", (
 
 test("publication temp files live below the private executable state root", () => {
   assert.equal(publicationTempPrefix("/var/lib/ttd-dev-agent"), "/var/lib/ttd-dev-agent/publish-");
+});
+
+test("guest publication bundles use an absolute workspace path", () => {
+  assert.equal(
+    guestPublicationBundlePath("/workspaces/owner/session", "bundle-id"),
+    "/workspaces/owner/session/.dev-agent/publish-bundle-id.bundle",
+  );
 });
 
 test("publication excludes all controller-owned workspace state", () => {

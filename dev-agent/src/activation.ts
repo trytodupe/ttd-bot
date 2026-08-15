@@ -73,7 +73,7 @@ export class ActivationManager {
       throw new Error(`no targeted tests found for ${plugins.join(", ")}; add or update a test under tests/`);
     }
     const commands = [
-      "python -m compileall -q src /opt/ttd-dev-agent/staging_bot.py",
+      "PYTHONPYCACHEPREFIX=.dev-agent/pycache python -m compileall -q src /opt/ttd-dev-agent/staging_bot.py",
       `HOST=127.0.0.1 PORT=1 LOCALSTORE_DATA_DIR=${shellQuote(`${session.workspace}/data`)} ` +
         "TTD_STAGING_PLUGIN_MANIFEST=.dev-agent/plugins.json python /opt/ttd-dev-agent/staging_bot.py validate",
       `python -m pytest -q ${targetedTests.map(shellQuote).join(" ")}`,

@@ -42,6 +42,10 @@ export function publicationTempPrefix(stateRoot: string): string {
   return join(stateRoot, "publish-");
 }
 
+export function guestPublicationBundlePath(workspace: string, identifier: string): string {
+  return join(workspace, ".dev-agent", `publish-${identifier}.bundle`);
+}
+
 export function publicationPathspecs(): string[] {
   return [
     ".",
@@ -178,7 +182,7 @@ export class GitHubPublisher {
 
   private async transferBranch(session: SessionRecord, slot: SlotRecord, token: string): Promise<{ headSha: string; changedFiles: string[] }> {
     const headSha = await this.prepareCommit(session, slot);
-    const guestBundle = `.dev-agent/publish-${randomUUID()}.bundle`;
+    const guestBundle = guestPublicationBundlePath(session.workspace, randomUUID());
     const bundle = await this.guest.runTrusted(
       session,
       slot,
