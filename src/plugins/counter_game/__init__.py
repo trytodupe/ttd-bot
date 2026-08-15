@@ -31,19 +31,29 @@ def _get_group_lock(group_id: int) -> asyncio.Lock:
     return lock
 
 
-def _is_text_only_number(message: Message) -> bool:
-    """Return True iff every segment is text and the concatenated text matches ``^\\d+$``.
+def _parse_text_only_number(message: Message) -> int | None:
+    """Return a safe integer iff the message contains only numeric text.
 
     Rejects messages containing at, image, reply, or any other non-text segment.
-    Rejects whitespace-padded text, signs, decimals, and ordinary non-numeric text.
+    Rejects whitespace-padded text, signs, decimals, ordinary non-numeric text,
+    and digit strings that exceed Python's safe integer-conversion limit.
     """
     parts: list[str] = []
     for segment in message:
         if segment.type != "text":
-            return False
+            return None
         parts.append(str(segment.data.get("text", "")))
     concatenated = "".join(parts)
-    return bool(_NUMBER_RE.fullmatch(concatenated))
+    if not _NUMBER_RE.fullmatch(concatenated):
+        return None
+    try:
+        return int(concatenated)
+    except ValueError:
+        return None
+
+
+def _is_text_only_number(message: Message) -> bool:
+    return _parse_text_only_number(message) is not None
 
 
 async def _is_group_numeric(event: GroupMessageEvent) -> bool:
@@ -59,11 +69,9 @@ matcher = on_message(
 
 @matcher.handle()
 async def handle_counter(event: GroupMessageEvent) -> None:
-    value = int("".join(
-        str(seg.data.get("text", ""))
-        for seg in event.message
-        if seg.type == "text"
-    ))
+    value = _parse_text_only_number(event.message)
+    if value is None:
+        return
 
     group_id = int(event.group_id)
 

@@ -13,6 +13,7 @@ Verified scenarios:
   E. Different groups are independent.
 """
 
+import sys
 import time as _time
 
 import pytest
@@ -232,6 +233,23 @@ async def test_nonnumeric_messages_do_not_pass_rule(
         bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
 
         event = _make_group_event(group_id=5000, text=text)
+        ctx.receive_event(bot, event)
+        ctx.should_not_pass_rule()
+
+
+@pytest.mark.asyncio
+async def test_oversized_number_does_not_pass_rule(app: App, counter_game_module):
+    mod = counter_game_module
+    matcher = mod.matcher
+    max_digits = sys.get_int_max_str_digits()
+    if max_digits == 0:
+        pytest.skip("Python integer string conversion limit is disabled")
+
+    async with app.test_matcher(matcher) as ctx:
+        adapter = ctx.create_adapter(base=OneBotV11Adapter)
+        bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
+
+        event = _make_group_event(group_id=5000, text="1" * (max_digits + 1))
         ctx.receive_event(bot, event)
         ctx.should_not_pass_rule()
 
