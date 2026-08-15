@@ -4,7 +4,8 @@ All tests drive the real registered NoneBot matcher via nonebug
 ``App.test_matcher`` with proper OneBot V11 event objects.
 
 Verified scenarios:
-  A. A:1 → silent, B:2 → silent, A:4 → failure/reset, B:1 → silent.
+  A. A:1 -> reaction, B:2 -> reaction, A:4 -> failure/reset,
+     B:1 -> reaction.
   B. Private digit messages never pass the matcher rule.
   C. Non-numeric text, whitespace-padded numbers, sign-prefixed, decimals
      never pass the matcher rule.
@@ -115,6 +116,17 @@ def _make_rich_group_event(
     )
 
 
+def _expect_success_reaction(ctx, module, event: GroupMessageEvent) -> None:
+    ctx.should_call_api(
+        "set_msg_emoji_like",
+        {
+            "message_id": event.message_id,
+            "emoji_id": module._SUCCESS_EMOJI_ID,
+            "set": True,
+        },
+    )
+
+
 @pytest.fixture()
 def counter_game_module():
     """Import (or reload) the counter_game plugin and reset its mutable state."""
@@ -139,11 +151,11 @@ def counter_game_module():
 
 
 # ---------------------------------------------------------------------------
-# A. Integrated counting sequence: 1 → 2 → 4(fail) → 1
+# A. Integrated counting sequence: 1 -> 2 -> 4(fail) -> 1
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_counting_sequence_silent_accept_then_fail_then_recover(
+async def test_counting_sequence_reacts_then_fails_and_recovers(
     app: App, counter_game_module
 ):
     mod = counter_game_module
@@ -153,19 +165,21 @@ async def test_counting_sequence_silent_accept_then_fail_then_recover(
         adapter = ctx.create_adapter(base=OneBotV11Adapter)
         bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
 
-        # --- sender A sends "1" (previous=0, expected=1) → silent accept ---
+        # --- sender A sends "1" (previous=0, expected=1) -> reaction ---
         event_1 = _make_group_event(group_id=1000, text="1", user_id=10)
         ctx.receive_event(bot, event_1)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, event_1)
         ctx.should_finished()
 
-        # --- sender B sends "2" (previous=1, expected=2) → silent accept ---
+        # --- sender B sends "2" (previous=1, expected=2) -> reaction ---
         event_2 = _make_group_event(group_id=1000, text="2", user_id=20)
         ctx.receive_event(bot, event_2)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, event_2)
         ctx.should_finished()
 
-        # --- sender A sends "4" (previous=2, expected=3) → failure + reset ---
+        # --- sender A sends "4" (previous=2, expected=3) -> failure + reset ---
         event_4 = _make_group_event(group_id=1000, text="4", user_id=10)
         failure_text = "接龙失败！正确数字应为 3，已重置为 0，下一位请发 1。"
         ctx.receive_event(bot, event_4)
@@ -173,10 +187,56 @@ async def test_counting_sequence_silent_accept_then_fail_then_recover(
         ctx.should_call_send(event_4, failure_text)
         ctx.should_finished()
 
-        # --- sender B sends "1" (previous=0 after reset, expected=1) → silent accept ---
+        # --- sender B sends "1" (previous=0 after reset) -> reaction ---
         event_recover = _make_group_event(group_id=1000, text="1", user_id=20)
         ctx.receive_event(bot, event_recover)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, event_recover)
+        ctx.should_finished()
+
+    assert mod._group_counters[1000] == 1
+
+
+@pytest.mark.asyncio
+async def test_wrong_initial_number_is_silent_and_keeps_zero(
+    app: App, counter_game_module
+):
+    mod = counter_game_module
+
+    async with app.test_matcher(mod.matcher) as ctx:
+        adapter = ctx.create_adapter(base=OneBotV11Adapter)
+        bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
+
+        event = _make_group_event(group_id=1000, text="666", user_id=10)
+        ctx.receive_event(bot, event)
+        ctx.should_pass_rule()
+        ctx.should_finished()
+
+    assert mod._group_counters.get(1000, 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_reaction_failure_does_not_rollback_accepted_number(
+    app: App, counter_game_module
+):
+    mod = counter_game_module
+
+    async with app.test_matcher(mod.matcher) as ctx:
+        adapter = ctx.create_adapter(base=OneBotV11Adapter)
+        bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
+
+        event = _make_group_event(group_id=1000, text="1", user_id=10)
+        ctx.receive_event(bot, event)
+        ctx.should_pass_rule()
+        ctx.should_call_api(
+            "set_msg_emoji_like",
+            {
+                "message_id": event.message_id,
+                "emoji_id": mod._SUCCESS_EMOJI_ID,
+                "set": True,
+            },
+            exception=RuntimeError("reaction failed"),
+        )
         ctx.should_finished()
 
     assert mod._group_counters[1000] == 1
@@ -316,24 +376,24 @@ async def test_different_groups_are_independent(app: App, counter_game_module):
         bot = ctx.create_bot(base=Bot, adapter=adapter, self_id="999")
 
         # Group A: accept "1"
-        ctx.receive_event(
-            bot, _make_group_event(group_id=100, text="1", user_id=10)
-        )
+        group_a_1 = _make_group_event(group_id=100, text="1", user_id=10)
+        ctx.receive_event(bot, group_a_1)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, group_a_1)
         ctx.should_finished()
 
         # Group B: accept "1" (independent — starts from 0)
-        ctx.receive_event(
-            bot, _make_group_event(group_id=200, text="1", user_id=20)
-        )
+        group_b_1 = _make_group_event(group_id=200, text="1", user_id=20)
+        ctx.receive_event(bot, group_b_1)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, group_b_1)
         ctx.should_finished()
 
         # Group A: accept "2"
-        ctx.receive_event(
-            bot, _make_group_event(group_id=100, text="2", user_id=10)
-        )
+        group_a_2 = _make_group_event(group_id=100, text="2", user_id=10)
+        ctx.receive_event(bot, group_a_2)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, group_a_2)
         ctx.should_finished()
 
         # Group A: "99" fails, resets only group A
@@ -347,10 +407,10 @@ async def test_different_groups_are_independent(app: App, counter_game_module):
         ctx.should_finished()
 
         # Group B: accept "2" (unaffected by group A's reset)
-        ctx.receive_event(
-            bot, _make_group_event(group_id=200, text="2", user_id=20)
-        )
+        group_b_2 = _make_group_event(group_id=200, text="2", user_id=20)
+        ctx.receive_event(bot, group_b_2)
         ctx.should_pass_rule()
+        _expect_success_reaction(ctx, mod, group_b_2)
         ctx.should_finished()
 
     assert mod._group_counters[100] == 0

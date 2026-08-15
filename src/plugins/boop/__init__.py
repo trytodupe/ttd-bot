@@ -16,7 +16,7 @@ import asyncio
 import re as _re
 import time as _time
 
-from nonebot import on_message
+from nonebot import logger, on_message
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
@@ -30,6 +30,7 @@ __plugin_meta__ = PluginMetadata(
 
 _COOLDOWN_SECONDS = 10
 _COOLDOWN_NOTICE = "你刚 Boop 过别人，冷却中哦~"
+_SUCCESS_EMOJI_ID = "76"
 
 _cooldowns: dict[int, float] = {}
 _sender_locks: dict[int, asyncio.Lock] = {}
@@ -68,6 +69,18 @@ def _get_sender_lock(user_id: int) -> asyncio.Lock:
     return lock
 
 
+async def _react_success(bot: Bot, message_id: int) -> None:
+    try:
+        await bot.call_api(
+            "set_msg_emoji_like",
+            message_id=message_id,
+            emoji_id=_SUCCESS_EMOJI_ID,
+            set=True,
+        )
+    except Exception as exc:
+        logger.warning("Failed to react to successful Boop: %r", exc)
+
+
 @_matcher.handle()
 async def _handle_boop(bot: Bot, event: GroupMessageEvent, matcher: Matcher) -> None:
     at_targets = _extract_at_targets(event.message)
@@ -98,7 +111,12 @@ async def _handle_boop(bot: Bot, event: GroupMessageEvent, matcher: Matcher) -> 
             return
 
         try:
-            await bot.call_api("send_private_msg", user_id=target_qq, message="Boop!")
+            await bot.call_api(
+                "send_private_msg",
+                user_id=target_qq,
+                group_id=int(event.group_id),
+                message="Boop!",
+            )
         except Exception:
             await matcher.finish(message="私聊发送失败，可能对方未开启私聊权限。")
             return
@@ -106,4 +124,4 @@ async def _handle_boop(bot: Bot, event: GroupMessageEvent, matcher: Matcher) -> 
         # Cooldown begins only after a successful send.
         _cooldowns[event.user_id] = _time.monotonic()
 
-    await matcher.finish(message=f"Boop! 已发送给 {target_qq}")
+    await _react_success(bot, int(event.message_id))
