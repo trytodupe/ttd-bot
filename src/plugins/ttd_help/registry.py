@@ -20,6 +20,13 @@ class FeatureDoc:
 
 FEATURE_DOCS: tuple[FeatureDoc, ...] = (
     FeatureDoc(
+        key="boop",
+        title="Boop",
+        description="给群友发送一条私聊 Boop! 消息。",
+        providers=("boop",),
+        commands=("/boop @目标",),
+    ),
+    FeatureDoc(
         key="help",
         title="帮助索引",
         description="查看 ttd-bot 的功能列表和具体用法。",
