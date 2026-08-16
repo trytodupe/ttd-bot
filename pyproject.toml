@@ -36,8 +36,8 @@ dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
     "nonebot-plugin-steam-game-status @ git+https://github.com/trytodupe/nonebot_plugin_steam_game_status@4209a03ed793451c50b22b5e20c3d8885edb08f5",
-    "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@1197ff319f5fbc9ea9f6056f36d3080461a1e133",
-    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@a7cf9812df6d2f8211f54519c8637189e83131e1",
+    "nonebot-plugin-parser[ytdlp] @ git+https://github.com/trytodupe/nonebot-plugin-parser@1eebc4502a3fb09594cb0b7023b5f78546217db0",
+    "nonebot-plugin-moellmchats @ git+https://github.com/trytodupe/nonebot-plugin-moellmchats@93bf8667e9e5b0988665a24a78fbe5706dcb38e4",
 ]
 
 [tool.nonebot]

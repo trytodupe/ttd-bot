@@ -223,6 +223,7 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         description="自动解析 B 站、抖音、快手、微博、小红书、YouTube、TikTok、Twitter、AcFun、NGA 等链接。",
         providers=("nonebot_plugin_parser",),
         commands=("发送支持平台的链接、BV号、小程序或卡片",),
+        notes=("X/Twitter 与 YouTube 群聊解析要求群内存在超级用户。",),
     ),
     FeatureDoc(
         key="sub",
@@ -267,6 +268,7 @@ IGNORED_PROVIDERS: frozenset[str] = frozenset(
         "nonebot_plugin_clovers",
         "nonebot_plugin_datastore",
         "dev_agent_gateway",
+        "group_superuser_gate",
         "keep_alive",
         "nonebot_plugin_localstore",
         "nonebot_plugin_orm",
