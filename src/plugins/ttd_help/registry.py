@@ -244,6 +244,14 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         commands=("@机器人 <消息>", "ttd llm status"),
     ),
     FeatureDoc(
+        key="youmind",
+        title="YouMind 项目代理",
+        description="把合并转发中的聊天和素材导入独立 YouMind 项目，并继续 Agent 对话。",
+        providers=("youmind_agent",),
+        commands=("回复合并转发并 @机器人 <任务>", "ttd youmind status"),
+        notes=("当前仅在指定群聊开放；同一条合并转发会复用同一个 YouMind 项目。",),
+    ),
+    FeatureDoc(
         key="counter_game",
         title="接龙游戏",
         description="群共享接龙游戏。任何人发送纯数字消息参与，群内从 1 开始递增接龙。",

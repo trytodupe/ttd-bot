@@ -7,6 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "asyncpg>=0.30.0",
     "gunicorn>=23.0.0",
+    "httpx>=0.28.1",
     "uvicorn[standard]>=0.35.0",
     "nonebot2[httpx,fastapi,aiohttp]>=2.4.3",
     "nb-cli>=1.4.2",
