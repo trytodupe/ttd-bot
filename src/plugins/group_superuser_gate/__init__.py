@@ -3,21 +3,37 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any
 
-from nonebot import get_driver, logger
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
+from nonebot import get_driver, get_plugin_config, logger
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
+from pydantic import BaseModel
 
-GROUP_SUPERUSER_GATE_INTERFACE_VERSION = 1
+GROUP_SUPERUSER_GATE_INTERFACE_VERSION = 2
 _EVENT_CACHE_LIMIT = 1024
 _event_access_cache: OrderedDict[tuple[str, int, int], bool] = OrderedDict()
+
+
+class Config(BaseModel):
+    group_superuser_gate_private_enabled: bool = True
+
 
 __plugin_meta__ = PluginMetadata(
     name="group-superuser-gate",
     description="Shared same-group superuser access gate for internal plugins.",
     usage="Internal plugin.",
     type="library",
+    config=Config,
     supported_adapters={"~onebot.v11"},
 )
+pconfig = get_plugin_config(Config)
+
+
+@get_driver().on_startup
+def log_gate_config() -> None:
+    logger.info(
+        "Group superuser gate configured: "
+        f"private_enabled={pconfig.group_superuser_gate_private_enabled}"
+    )
 
 
 def _configured_superusers() -> set[str]:
@@ -47,7 +63,7 @@ def _matches_superuser(bot: Bot, user_id: Any, superusers: set[str]) -> bool:
     return normalized in superusers or f"{adapter_name}:{normalized}" in superusers
 
 
-async def group_has_superuser(bot: Bot, event: GroupMessageEvent) -> bool:
+async def _group_has_superuser(bot: Bot, event: GroupMessageEvent) -> bool:
     cache_key = _event_cache_key(bot, event)
     if cache_key in _event_access_cache:
         return _event_access_cache[cache_key]
@@ -76,7 +92,15 @@ async def group_has_superuser(bot: Bot, event: GroupMessageEvent) -> bool:
     return allowed
 
 
+async def event_access_allowed(bot: Bot, event: Any) -> bool:
+    if isinstance(event, PrivateMessageEvent):
+        return pconfig.group_superuser_gate_private_enabled
+    if isinstance(event, GroupMessageEvent):
+        return await _group_has_superuser(bot, event)
+    return False
+
+
 __all__ = [
     "GROUP_SUPERUSER_GATE_INTERFACE_VERSION",
-    "group_has_superuser",
+    "event_access_allowed",
 ]
