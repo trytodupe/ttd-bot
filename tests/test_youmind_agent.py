@@ -8,7 +8,12 @@ from types import SimpleNamespace
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageSegment,
+    PrivateMessageEvent,
+)
 from nonebot.plugin import get_plugin
 
 
@@ -31,6 +36,23 @@ def youmind_modules():
         "service": importlib.import_module("youmind_agent.service"),
         "storage": importlib.import_module("youmind_agent.storage"),
     }
+
+
+def test_group_access_is_restricted_to_configured_group(youmind_modules, monkeypatch):
+    package = youmind_modules["package"]
+    monkeypatch.setattr(package.config, "youmind_enabled", True)
+    monkeypatch.setattr(package.config, "youmind_allowed_group_ids", {1015880675})
+
+    assert package.Config().youmind_allowed_group_ids == {1015880675}
+    assert package._group_id_allowed(1015880675)
+    assert not package._group_id_allowed(725601182)
+    assert package._group_allowed(
+        GroupMessageEvent.model_construct(group_id=1015880675)
+    )
+    assert not package._group_allowed(
+        GroupMessageEvent.model_construct(group_id=725601182)
+    )
+    assert not package._group_allowed(PrivateMessageEvent.model_construct(user_id=1))
 
 
 def test_parse_forward_messages_builds_transcript_and_attachment_manifest(

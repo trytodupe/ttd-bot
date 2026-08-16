@@ -49,6 +49,14 @@ service = YouMindService(
 driver = get_driver()
 
 
+def _group_id_allowed(group_id: int) -> bool:
+    return config.youmind_enabled and group_id in config.youmind_allowed_group_ids
+
+
+def _group_allowed(event: MessageEvent) -> bool:
+    return isinstance(event, GroupMessageEvent) and _group_id_allowed(event.group_id)
+
+
 def _reply_message_id(event: MessageEvent) -> int | None:
     reply = getattr(event, "reply", None)
     value = getattr(reply, "message_id", None) if reply is not None else None
@@ -92,18 +100,14 @@ async def _resolve_reply_forward_id(bot: Bot, event: MessageEvent) -> str:
 
 async def _start_rule(bot: Bot, event: MessageEvent) -> bool:
     return (
-        config.youmind_enabled
-        and isinstance(event, GroupMessageEvent)
-        and event.group_id in config.youmind_allowed_group_ids
+        _group_allowed(event)
         and _explicitly_at_bot(bot, event)
         and bool(await _resolve_reply_forward_id(bot, event))
     )
 
 
 async def _continuation_rule(event: MessageEvent) -> bool:
-    if not config.youmind_enabled or not isinstance(event, GroupMessageEvent):
-        return False
-    if event.group_id not in config.youmind_allowed_group_ids:
+    if not _group_allowed(event):
         return False
     reply_message_id = _reply_message_id(event)
     if reply_message_id is None:
@@ -167,19 +171,14 @@ async def handle_continuation(bot: Bot, event: GroupMessageEvent) -> None:
     )
 
 
-status_matcher = on_command("youmind", rule=to_me(), priority=5, block=True)
+status_matcher = on_command(
+    "youmind", rule=Rule(_group_allowed) & to_me(), priority=5, block=True
+)
 command_arg = CommandArg()
 
 
 @status_matcher.handle()
 async def handle_status(event: MessageEvent, args: Message = command_arg) -> None:
-    if (
-        not config.youmind_enabled
-        or not isinstance(event, GroupMessageEvent)
-        or event.group_id not in config.youmind_allowed_group_ids
-    ):
-        await status_matcher.finish("当前会话不能使用 YouMind。")
-        return
     if args.extract_plain_text().strip().lower() != "status":
         await status_matcher.finish("用法：ttd youmind status")
         return
@@ -199,7 +198,7 @@ async def handle_status(event: MessageEvent, args: Message = command_arg) -> Non
 @driver.on_bot_connect
 async def resume_tasks(bot: Bot) -> None:
     for chat in await store.unfinished_chats():
-        if int(chat.get("group_id", 0)) not in config.youmind_allowed_group_ids:
+        if not _group_id_allowed(int(chat.get("group_id", 0))):
             continue
         # Project import source URLs may have expired. Running chats can be safely polled again.
         if chat.get("chat_id"):

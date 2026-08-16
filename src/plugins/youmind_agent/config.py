@@ -8,7 +8,7 @@ class Config(BaseModel):
     youmind_api_key: str = ""
     youmind_base_url: str = "https://youmind.com"
     youmind_proxy: str = ""
-    youmind_allowed_group_ids: set[int] = Field(default_factory=lambda: {725601182})
+    youmind_allowed_group_ids: set[int] = Field(default_factory=lambda: {1015880675})
     youmind_text_model: str = "gpt-5.6-luna"
     youmind_image_model: str = "gpt-image-2-2026-04-21"
     youmind_image_skill_id: str = "019c4d56-f23a-78a7-9ebb-af41b8993a0e"
