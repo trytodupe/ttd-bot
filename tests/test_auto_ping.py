@@ -9,6 +9,27 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.plugin import get_plugin
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+PLUGIN_DIR = PROJECT_ROOT / "src" / "plugins"
+if str(PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_DIR))
+
+from src.plugins._reaction_catalog import (  # noqa: E402
+    TYPE_1_REACTIONS,
+    ReactionChoice,
+)
+
+
+def _reaction(reaction_id: str) -> ReactionChoice:
+    return next(
+        reaction
+        for reaction in TYPE_1_REACTIONS
+        if reaction.reaction_id == reaction_id
+    )
+
 @pytest.fixture(scope="module")
 def auto_ping_modules():
     try:
@@ -28,11 +49,6 @@ def auto_ping_modules():
         nonebot.load_plugin("nonebot_plugin_localstore")
     if get_plugin("nonebot_plugin_uninfo") is None:
         nonebot.load_plugin("nonebot_plugin_uninfo")
-
-    plugin_dir = Path(__file__).resolve().parents[1] / "src" / "plugins"
-    plugin_dir_text = str(plugin_dir)
-    if plugin_dir_text not in sys.path:
-        sys.path.insert(0, plugin_dir_text)
 
     package = importlib.import_module("auto_ping")
     storage = importlib.import_module("auto_ping.storage")
@@ -326,7 +342,11 @@ def test_build_proposal_message_uses_matching_faces(auto_ping_modules):
     package, _, helpers = auto_ping_modules
     parsed = helpers.AddCommandArgs(target_qq=123456, alias="bob")
 
-    message = package._build_proposal_message(parsed, 76, 424)
+    message = package._build_proposal_message(
+        parsed,
+        _reaction("76"),
+        _reaction("424"),
+    )
 
     assert [(segment.type, segment.data) for segment in message] == [
         ("text", {"text": "Proposal: bob -> "}),
@@ -335,6 +355,26 @@ def test_build_proposal_message_uses_matching_faces(auto_ping_modules):
         ("face", {"id": "76"}),
         ("text", {"text": " 反对："}),
         ("face", {"id": "424"}),
+    ]
+
+
+def test_build_proposal_message_uses_text_for_reaction_only_id(auto_ping_modules):
+    package, _, helpers = auto_ping_modules
+    parsed = helpers.AddCommandArgs(target_qq=123456, alias="bob")
+
+    message = package._build_proposal_message(
+        parsed,
+        _reaction("193"),
+        _reaction("76"),
+    )
+
+    assert [(segment.type, segment.data) for segment in message] == [
+        ("text", {"text": "Proposal: bob -> "}),
+        ("at", {"qq": "123456"}),
+        ("text", {"text": "\n赞成："}),
+        ("text", {"text": "193"}),
+        ("text", {"text": " 反对："}),
+        ("face", {"id": "76"}),
     ]
 
 
@@ -359,7 +399,11 @@ async def test_create_alias_proposal_persists_and_adds_reactions(
 
     monkeypatch.setattr(package, "registry", registry)
     monkeypatch.setattr(package, "proposal_store", proposal_store)
-    monkeypatch.setattr(package.random, "sample", lambda population, count: [76, 424])
+    monkeypatch.setattr(
+        package.random,
+        "sample",
+        lambda population, count: [_reaction("76"), _reaction("424")],
+    )
 
     await package._create_alias_proposal(
         FakeBot(),
@@ -413,7 +457,11 @@ async def test_create_alias_proposal_reuses_alias_after_silent_expiry(
 
     monkeypatch.setattr(package, "registry", registry)
     monkeypatch.setattr(package, "proposal_store", proposal_store)
-    monkeypatch.setattr(package.random, "sample", lambda population, count: [76, 424])
+    monkeypatch.setattr(
+        package.random,
+        "sample",
+        lambda population, count: [_reaction("76"), _reaction("424")],
+    )
     monkeypatch.setattr(proposals.time, "time", lambda: now)
 
     await package._create_alias_proposal(

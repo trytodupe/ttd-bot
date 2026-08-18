@@ -15,7 +15,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.permission import SUPERUSER
 import nonebot_plugin_localstore as store
 
-from .face import emoji_like_id_set
+from src.plugins._reaction_catalog import ENABLED_RANDOM_REACTIONS
 from .user_storage import UserStorage
 
 require("nonebot_plugin_localstore")
@@ -44,12 +44,12 @@ matcher = on_message(
 @matcher.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     try:
-        emoji_id = random.choice(list(emoji_like_id_set))
+        reaction = random.choice(ENABLED_RANDOM_REACTIONS)
 
         await bot.call_api(
             "set_msg_emoji_like",  # OneBot协议标准API
             message_id=event.message_id,
-            emoji_id=emoji_id,  # 目标表情ID
+            emoji_id=reaction.reaction_id,  # 目标表情ID
         )
         
     except Exception as e:

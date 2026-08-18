@@ -30,8 +30,9 @@ from nonebot.rule import Rule
 from nonebot_plugin_uninfo import QryItrface, SceneType
 from nonebot_plugin_uninfo import User
 
+from src.plugins._reaction_catalog import ENABLED_RANDOM_REACTIONS, ReactionChoice
+
 from .config import Config
-from .emoji import PROPOSAL_EMOJI_IDS
 from .helpers import (
     AddCommandArgs,
     format_alias_lines,
@@ -136,16 +137,22 @@ def _extract_message_id(result: Any) -> int:
 
 def _build_proposal_message(
     parsed: AddCommandArgs,
-    approve_emoji_id: int,
-    reject_emoji_id: int,
+    approve_reaction: ReactionChoice,
+    reject_reaction: ReactionChoice,
 ) -> Message:
     message = Message(f"Proposal: {parsed.alias} -> ")
     message += MessageSegment.at(parsed.target_qq)
     message += MessageSegment.text("\n赞成：")
-    message += MessageSegment.face(approve_emoji_id)
+    message += _reaction_display_segment(approve_reaction)
     message += MessageSegment.text(" 反对：")
-    message += MessageSegment.face(reject_emoji_id)
+    message += _reaction_display_segment(reject_reaction)
     return message
+
+
+def _reaction_display_segment(reaction: ReactionChoice) -> MessageSegment:
+    if reaction.message_face_id is not None:
+        return MessageSegment.face(reaction.message_face_id)
+    return MessageSegment.text(reaction.display_text)
 
 
 def _reaction_passes_threshold(bot: Bot, notice: ReactionNotice) -> bool:
@@ -207,11 +214,11 @@ async def _create_alias_proposal(
     event: GroupMessageEvent,
     parsed: AddCommandArgs,
 ) -> None:
-    approve_emoji_id, reject_emoji_id = random.sample(PROPOSAL_EMOJI_IDS, 2)
+    approve_reaction, reject_reaction = random.sample(ENABLED_RANDOM_REACTIONS, 2)
     proposal_message = _build_proposal_message(
         parsed,
-        approve_emoji_id,
-        reject_emoji_id,
+        approve_reaction,
+        reject_reaction,
     )
 
     async with _REGISTRY_LOCK:
@@ -234,17 +241,17 @@ async def _create_alias_proposal(
             proposer_qq=int(event.user_id),
             target_qq=parsed.target_qq,
             alias=parsed.alias,
-            approve_emoji_id=str(approve_emoji_id),
-            reject_emoji_id=str(reject_emoji_id),
+            approve_emoji_id=approve_reaction.reaction_id,
+            reject_emoji_id=reject_reaction.reaction_id,
         )
         proposal_store.add(proposal)
 
         try:
-            for emoji_id in (approve_emoji_id, reject_emoji_id):
+            for reaction in (approve_reaction, reject_reaction):
                 await bot.call_api(
                     "set_msg_emoji_like",
                     message_id=message_id,
-                    emoji_id=str(emoji_id),
+                    emoji_id=reaction.reaction_id,
                     set=True,
                 )
         except Exception:
