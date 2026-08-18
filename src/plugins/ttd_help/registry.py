@@ -238,6 +238,21 @@ FEATURE_DOCS: tuple[FeatureDoc, ...] = (
         notes=("添加和移除订阅需要群管理员或超级用户权限。",),
     ),
     FeatureDoc(
+        key="typhoon",
+        title="台风查询",
+        description="查询当前西太平洋活跃台风的位置、强度和路径预报。",
+        providers=("typhoon_query",),
+        commands=("ttd typhoon", "ttd typhoon <编号>", "ttd 台风"),
+    ),
+    FeatureDoc(
+        key="keep_alive",
+        title="续火提醒",
+        description="每日续火提醒，在私聊中发送「续火」开启/关闭。",
+        providers=("keep_alive",),
+        visibility="background",
+        commands=("续火",),
+    ),
+    FeatureDoc(
         key="moellmchats",
         title="群聊 LLM",
         description="在群聊中 @ 机器人进行多轮上下文对话。",

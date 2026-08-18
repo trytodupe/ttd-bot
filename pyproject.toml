@@ -69,6 +69,10 @@ plugins = [
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["src"]
+
 [dependency-groups]
 dev = [
     "nonebug>=0.4.3",
