@@ -352,3 +352,67 @@ async def test_deliver_turn_saves_hidden_image_without_sending_duplicate(
     )
     assert [segment.type for segment in sent] == ["reply", "image", "text"]
     assert (await store.route(999))["local_id"] == "local-1"
+
+
+@pytest.mark.asyncio
+async def test_deliver_turn_sends_video_alone_and_text_separately(
+    youmind_modules, tmp_path
+):
+    results = youmind_modules["results"]
+    service_module = youmind_modules["service"]
+    storage = youmind_modules["storage"]
+    store = storage.StateStore(tmp_path / "state.json")
+    service = service_module.YouMindService(SimpleNamespace(), store, tmp_path)
+    sent_messages = []
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def call(self, operation, payload):
+            assert operation == "download"
+            assert payload == {"id": "video-media-1"}
+            return {
+                "file": {
+                    "type": "video",
+                    "title": "result.mp4",
+                    "playUrl": "https://cdn.example/result.mp4",
+                }
+            }
+
+    class FakeBot:
+        async def call_api(self, operation, **payload):
+            assert operation == "send_group_msg"
+            message = payload["message"]
+            if any(segment.type == "video" for segment in message):
+                assert [segment.type for segment in message] == ["video"]
+            sent_messages.append(message)
+            return {"message_id": 900 + len(sent_messages)}
+
+    service.client = lambda: FakeClient()
+    chat = {
+        "local_id": "local-video",
+        "group_id": 10,
+        "user_id": 20,
+        "request_message_id": 30,
+        "status": "running",
+    }
+    await store.put_chat(chat)
+    turn = results.TurnResult(
+        "completed",
+        assistant_message_id="assistant-video",
+        text="视频生成完成",
+        media_ids=["video-media-1"],
+    )
+
+    await service._deliver_turn(FakeBot(), chat, turn)
+
+    assert [[segment.type for segment in message] for message in sent_messages] == [
+        ["video"],
+        ["reply", "text"],
+    ]
+    assert (await store.route(901))["local_id"] == "local-video"
+    assert (await store.route(902))["local_id"] == "local-video"

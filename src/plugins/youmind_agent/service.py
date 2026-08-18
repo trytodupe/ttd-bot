@@ -460,27 +460,39 @@ class YouMindService:
                 if not (resolved[0] == "image" and turn.image_urls):
                     media.append(resolved)
         media = [item for item in media if item[1]]
+
+        message_ids: list[int] = []
+        for _kind, url, _title in (item for item in media if item[0] == "video"):
+            result = await bot.call_api(
+                "send_group_msg",
+                group_id=chat["group_id"],
+                message=Message(MessageSegment.video(url)),
+            )
+            if (message_id := send_message_id(result)) is not None:
+                message_ids.append(message_id)
+
         message = Message(MessageSegment.reply(target))
         for kind, url, _title in media:
-            if kind == "video":
-                message += MessageSegment.video(url)
-            elif kind == "image":
+            if kind == "image":
                 message += MessageSegment.image(url)
-            else:
+            elif kind != "video":
                 message += MessageSegment.text(f"\n{url}")
         text = turn.text.strip()
         if text:
-            message += MessageSegment.text(f"\n{text}" if media else text)
+            message += MessageSegment.text(f"\n{text}" if len(message) > 1 else text)
         elif not media:
             message += MessageSegment.text("YouMind 已完成，但没有返回可投递的内容。")
-        result = await bot.call_api(
-            "send_group_msg", group_id=chat["group_id"], message=message
-        )
-        message_id = send_message_id(result)
+        if len(message) > 1:
+            result = await bot.call_api(
+                "send_group_msg", group_id=chat["group_id"], message=message
+            )
+            if (message_id := send_message_id(result)) is not None:
+                message_ids.append(message_id)
+
         chat["status"] = "completed"
         chat["pending_questions"] = []
         await self.store.put_chat(chat)
-        if message_id is not None:
+        for message_id in message_ids:
             await self.store.bind_route(message_id, chat["local_id"])
 
     async def _send_text(
